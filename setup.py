@@ -23,5 +23,6 @@ setup(
         'PyYAML',
         'beautifultable',
         'passlib',
+        'pymysql',
     ]
 )
