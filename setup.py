@@ -6,11 +6,10 @@ TODO:
 from setuptools import find_packages, setup
 
 setup(
-    name='atsim',
+    name='matsim',
     version="0.1",
     description=(
-        "Python tools for setting up and analysing the results from CASTEP "
-        "and LAMMPS simulations."
+        "Materials simulation management code."
     ),
     author='Adam J. Plowman, Maria S. Yankova',
     packages=find_packages(),

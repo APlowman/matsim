@@ -4,9 +4,9 @@ import yaml
 import os
 import numpy as np
 import warnings
-from atsim.simulation import makesims
-from atsim.readwrite import format_dict, format_list
-from atsim import geometry, SET_UP_PATH, OPT_FILE_NAMES
+from matsim.simulation import makesims
+from matsim.readwrite import format_dict, format_list
+from matsim import geometry, SET_UP_PATH, OPT_FILE_NAMES
 
 
 def main(opt):
