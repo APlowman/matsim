@@ -117,7 +117,7 @@ crystal_structures:
   mon_ZrO2_DFT_opt:
     lattice.system: monoclinic
     lattice.centring: P
-    path: '/Users/Maria/Dropbox (Research Group)/Calculations-Code/Code/python-scripts/atomistic-simulation/atsim/ref/structures/mZrO2/2017-06-11/calc-out.cell'  
+    path: '/Users/Maria/Dropbox (Research Group)/Calculations-Code/Code/python-scripts/atomistic-simulation/matsim/ref/structures/mZrO2/2017-06-11/calc-out.cell'  
     
 cell_constraints:
   fix_all_cell:
