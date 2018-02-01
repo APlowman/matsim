@@ -1165,6 +1165,29 @@ def get_sim_group_runs(sim_group_id, states=None, user_cred=None):
     return run_groups
 
 
+def get_run_group(run_group_id, user_cred=None):
+    """Find out if a run group has been submitted."""
+
+    user_cred = user_cred or CONFIG['user']
+    user_id = get_user_id(user_cred)
+
+    sql = (
+        'select * '
+        'from run_group rg '
+        'inner join sim_group sg on sg.id = rg.sim_group_id '
+        'inner join user_account u on u.id = sg.user_account_id '
+        'where rg.id = %s and '
+        'u.id = %s'
+    )
+    run_group = exec_select(sql, (run_group_id, user_id))
+
+    if not run_group:
+        msg = 'No run group with ID {} is associated with this user.'
+        raise ValueError(msg.format(run_group_id))
+
+    return run_group
+
+
 def get_run_groups(sim_group_id, user_cred=None):
     """Get all run groups associated with a given sim group."""
 
