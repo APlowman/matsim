@@ -723,6 +723,9 @@ def flatten_dict_keys(d, base_k=None, delim='.'):
 def unflatten_dict_keys(d, delim='.'):
 
     unflat_d = {}
+    if not d:
+        return unflat_d
+
     for k, v, in d.items():
 
         if delim not in k:
