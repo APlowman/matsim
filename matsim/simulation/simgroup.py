@@ -14,13 +14,13 @@ from datetime import datetime
 import numpy as np
 
 from matsim import (JS_TEMPLATE_DIR, utils, parse_opt, CONFIG, DB_CONFIG,
-                   database, OPTSPEC)
+                    database, OPTSPEC)
 from matsim.simulation import BaseUpdate
 from matsim.simulation.sequence import SimSequence
 from matsim.atomistic.simulation.castep import CastepSimulation
 from matsim.atomistic.simulation.lammps import LammpsSimulation
 from matsim.utils import (nest, merge, prt, dict_from_list, mut_exc_args,
-                         set_nested_dict, get_recursive, update_dict)
+                          set_nested_dict, get_recursive, update_dict)
 from matsim.resources import Stage, Scratch, Archive, ResourceConnection
 from matsim.readwrite import replace_in_file, delete_line, add_line, write_list_file
 
@@ -775,6 +775,14 @@ class SimGroup(object):
 
             run_group = self.run_opt['groups'][rg_idx]
 
+            # Get ID in run_group table:
+            rg_id = run_group['id']
+
+            submit_time = database.get_run_group(rg_id)['submit_time']
+            if submit_time:
+                msg = 'Run group index: {} was already submitted (at {}).'
+                raise ValueError(msg.format(rg_idx, submit_time))
+
             print(sub_msg.format(rg_idx))
 
             rg_path = '/'.join(['run_groups', str(rg_idx)])
@@ -793,9 +801,6 @@ class SimGroup(object):
             # Get approximate time of execution, in a MySQL format:
             dt_fmt = '%Y-%m-%d %H:%M:%S'
             submit_time = datetime.strftime(datetime.now(), dt_fmt)
-
-            # Get ID in run_group table:
-            rg_id = run_group['id']
 
             # Update the database:
             # Set run state to 3 "in_queue" or 5 "running" (if not SGE)
