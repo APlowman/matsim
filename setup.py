@@ -24,5 +24,10 @@ setup(
         'beautifultable',
         'passlib',
         'pymysql',
-    ]
+    ],
+    entry_points={
+        'console_scripts': [
+            'matsim = matsim.__main__:main',
+        ],
+    }
 )
