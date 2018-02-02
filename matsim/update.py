@@ -6,6 +6,7 @@ import copy
 from matsim import CONFIG
 from matsim import database
 from matsim import resources
+from matsim import UP_OPTS
 from matsim.utils import prt, SpinnerThread
 
 
@@ -100,7 +101,7 @@ def parse_raw_qstat(qstat_lines):
     return ret
 
 
-def main(opts):
+def main():
     """Main function to update run states of SGE run groups.
 
     Task is to check if any run state need updating. Two possible updates:
@@ -118,7 +119,7 @@ def main(opts):
     """
 
     # First check stage specified in options exists on this machine:
-    stage = resources.Stage(opts['stage'])
+    stage = resources.Stage(UP_OPTS['stage'])
     # print('stage: {}'.format(stage.__dict__))
 
     mach_name = CONFIG['machine_name']
