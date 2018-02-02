@@ -2,7 +2,7 @@
 from matsim.atomistic.structure import atomistic, bicrystal, bravais, crystal
 
 STRUCT_LOOKUP = {
-    'BulkCrystal': atomistic.BulkCrystal,
+    'bulk_crystal': atomistic.BulkCrystal,
     'csl_bicrystal_from_parameters': bicrystal.csl_bicrystal_from_parameters,
     'csl_bulk_bicrystal_from_parameters': bicrystal.csl_bulk_bicrystal_from_parameters,
     'csl_surface_bicrystal_from_parameters': bicrystal.csl_surface_bicrystal_from_parameters,
