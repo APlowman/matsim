@@ -233,7 +233,8 @@ def write_process_jobscript(path, job_name, dependency, num_calcs, human_id,
     replace_in_file(js_path, '<replace_with_job_index_range>', job_range)
     replace_in_file(js_path, '<replace_with_run_group_job_name>', dependency)
     replace_in_file(js_path, '<replace_with_sim_group_human_id>', human_id)
-    replace_in_file(js_path, '<replace_with_run_group_idx>', run_group_idx)
+    replace_in_file(js_path, '<replace_with_run_group_idx>',
+                    str(run_group_idx))
 
 
 class SimGroup(object):
@@ -895,8 +896,44 @@ class SimGroup(object):
                 database.set_all_run_states(rg_id, 6)
 
             if run_group['auto_process']:
+
                 if self.scratch.sge:
-                    raise NotImplementedError()
+
+                    # Execute command to submit the process jobscript:
+                    cmd = ['qsub', 'process_jobscript.sh']
+                    submit_process_proc = conn.run_command(
+                        cmd, cwd=rg_path, block=False)
+
+                    # TODO use SpinnerThread class instead here
+                    msg = 'Submitting process job to SGE - PENDING {}\r'
+                    msg_done = 'Submitting process job to SGE - COMPLETE '
+                    while True:
+                        # Only poll the process every 1 second:
+                        if int(count / 10) == count / 10:
+                            if submit_process_proc.poll() is not None:
+                                break
+
+                        sys.stdout.write(msg.format(pending_strs[count % 4]))
+                        sys.stdout.flush()
+                        count += 1
+                        time.sleep(0.1)
+
+                    # At this point either the simulations have been run, or
+                    # submitted (if SGE).
+
+                    with submit_process_proc.stdout as submit_out:
+                        submit_stdout = submit_out.read()
+
+                    with submit_process_proc.stderr as submit_err:
+                        submit_stderr = submit_err.read()
+
+                    if not submit_stderr:
+                        print(msg_done)
+
+                    else:
+                        msg = ('There was a problem with process job '
+                               'submission: \n\n\t{}\n')
+                        raise ValueError(msg.format(submit_stderr))
 
                 else:
                     process.main(self, rg_idx)
