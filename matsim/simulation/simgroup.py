@@ -16,6 +16,7 @@ import numpy as np
 from matsim import (JS_TEMPLATE_DIR, utils, parse_opt, CONFIG, DB_CONFIG,
                     database, OPTSPEC)
 from matsim.simulation import BaseUpdate
+from matsim.simulation import process
 from matsim.simulation.sequence import SimSequence
 from matsim.atomistic.simulation.castep import CastepSimulation
 from matsim.atomistic.simulation.lammps import LammpsSimulation
@@ -215,6 +216,26 @@ def write_jobscript(path, calc_paths, method, num_cores, is_sge, job_array, exec
     os.makedirs(os.path.join(path, 'output'))
 
 
+def write_process_jobscript(path, job_name, dependency, num_calcs, human_id,
+                            run_group_idx):
+    """Write a job array dependency jobscript to auto-process a run group."""
+
+    # Get the template file path
+    tmp_path = os.path.join(JS_TEMPLATE_DIR, 'process_sge.txt')
+
+    # Copy template file to path
+    js_path = os.path.join(path, 'process_jobscript.sh')
+    shutil.copy(tmp_path, js_path)
+
+    # Make replacements in template file:
+    replace_in_file(js_path, '<replace_with_process_job_name>', job_name)
+    job_range = '1-' + str(num_calcs)
+    replace_in_file(js_path, '<replace_with_job_index_range>', job_range)
+    replace_in_file(js_path, '<replace_with_run_group_job_name>', dependency)
+    replace_in_file(js_path, '<replace_with_sim_group_human_id>', human_id)
+    replace_in_file(js_path, '<replace_with_run_group_idx>', run_group_idx)
+
+
 class SimGroup(object):
     """Class to represent a group of related simulations.
 
@@ -401,6 +422,7 @@ class SimGroup(object):
         return len(self.sim_updates)
 
     def _apply_sim_update(self, base_dict, update):
+        # TODO remove this logic from SimGroup
         """Apply a BaseUpdate namedtuple to a dict.
 
         Parameters
@@ -458,6 +480,7 @@ class SimGroup(object):
         return ret
 
     def get_path_labels(self, sim_idx):
+        # TODO remove this logic from SimGroup
 
         num_elems = self.sequence_lengths
         ind = [sim_idx]
@@ -711,7 +734,7 @@ class SimGroup(object):
                 'scratch_path': str(rg_path_scratch),
                 'parallel_env': soft_inst['parallel_env'],
                 'module_load': soft_inst['module_load'],
-                'job_name': self.name,
+                'job_name': '{}_{}'.format(self.name, rg_idx),
                 'seedname': 'sim',
                 'executable': soft_inst['executable'],
             }
@@ -722,6 +745,19 @@ class SimGroup(object):
                     'selective_submission': run_group['sge']['selective_submission'],
                 })
             write_jobscript(**js_params)
+
+            if run_group['auto_process'] and self.scratch.sge:
+
+                # Add process jobscript:
+                pjs_params = {
+                    'path': str(rg_path_stage),
+                    'job_name': 'p_' + self.name[2:],
+                    'dependency': self.name,
+                    'num_calcs': len(sim_paths_scratch),
+                    'human_id': self.human_id,
+                    'run_group_idx': rg_idx,
+                }
+                write_process_jobscript(**pjs_params)
 
     def auto_submit_initial_runs(self):
         """Submit initial runs according the the run group flag `auto_submit`"""
@@ -832,6 +868,9 @@ class SimGroup(object):
                 count += 1
                 time.sleep(0.1)
 
+            # At this point either the simulations have been run, or
+            # submitted (if SGE).
+
             with submit_proc.stdout as submit_out:
                 submit_stdout = submit_out.read()
 
@@ -854,6 +893,13 @@ class SimGroup(object):
             else:
                 # Set run_states to 6 "pending_process":
                 database.set_all_run_states(rg_id, 6)
+
+            if run_group['auto_process']:
+                if self.scratch.sge:
+                    raise NotImplementedError()
+
+                else:
+                    process.main(self, rg_idx)
 
     def add_to_db(self):
         """Connect to database, add a sim_group entry, with this human_id and
