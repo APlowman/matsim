@@ -4,10 +4,9 @@ from matsim import database
 from matsim import update
 from matsim.resources import ResourceConnection
 from matsim.utils import prt
-from matsim.simulation.simgroup import SimGroup
 
 
-def main(opts, human_id, seq_defn, up_opts):
+def main(sim_group, run_group_idx=None):
     """
     Process a given SimGroup:
     -   Run update to update run states in the database
@@ -18,14 +17,17 @@ def main(opts, human_id, seq_defn, up_opts):
     -   Overwrite JSON file to Scratch (make backup of previous on Scratch)
     -   Copy new JSON file Archive (make backup of previous on Archive)
 
+    Parameters
+    ----------
+    run_group_idx : int, optional
+        If set, only process runs belonging to the this run group. Otherwise,
+        process all run groups.
+
     """
 
     # Update (SGE) run states in database:
-    # update.main(up_opts)
+    update.main()
 
-    # Instantiate SimGroup object:
-
-    sim_group = SimGroup.load_state(human_id, 'scratch', seq_defn)
     sim_group.check_is_scratch_machine()
     sg_id = sim_group.db_id
 
@@ -36,6 +38,19 @@ def main(opts, human_id, seq_defn, up_opts):
     # state):
     pending_process = database.get_sim_group_runs(sg_id, [6, 8])
     prt(pending_process, 'pending_process runs')
+    prt(run_group_idx, 'run_group_idx')
+
+    if run_group_idx:
+
+        # Only keep runs belonging to given run group
+        for pen_run_idx in range(len(pending_process)):
+
+            pen_run = pending_process[pen_run_idx]
+            if pen_run['run_group_order_id'] == run_group_idx + 1:
+                pending_process = [pen_run]
+                break
+            else:
+                pending_process = []
 
     # Set state to 7 ("processing") for these runs
     run_ids = [i['id'] for i in pending_process]
