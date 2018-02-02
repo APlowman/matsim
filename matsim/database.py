@@ -301,9 +301,10 @@ def add_archive(name, base_path, machine_name, user_cred=None):
     return archive_insert_id
 
 
-def get_scratches(user_cred):
+def get_scratches(user_cred=None):
     """Retrieve all scratch resources belonging to a user."""
 
+    user_cred = user_cred or CONFIG['user']
     user_id = get_user_id(user_cred)
 
     sql = (
