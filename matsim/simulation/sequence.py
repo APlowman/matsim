@@ -5,7 +5,7 @@ import copy
 import numpy as np
 import yaml
 from matsim.utils import (set_nested_dict, get_recursive,
-                         update_dict, prt, mut_exc_args,)
+                          update_dict, prt, mut_exc_args,)
 from matsim import readwrite
 from matsim.simulation import BaseUpdate
 
@@ -190,10 +190,15 @@ class SimSequence(object):
         if self.func:
             self.func(self)
 
-        fmt_arr_opt = {
+        fmt_arr_opt_path = {
             'col_delim': '_',
             'row_delim': '__',
             'format_spec': self.path_fmt,
+        }
+        fmt_arr_opt_val = {
+            'col_delim': '_',
+            'row_delim': '__',
+            'format_spec': self.val_fmt,
         }
 
         name_add = ['sequence_id', 'names']
@@ -205,14 +210,24 @@ class SimSequence(object):
         for val in self.vals:
 
             if self.val_seq_type == 'array':
-                path_str = readwrite.format_arr(val, **fmt_arr_opt)[:-2]
+                path_str = readwrite.format_arr(val, **fmt_arr_opt_path)[:-2]
 
             else:
                 path_str = self.path_fmt.format(val)
 
+            val_formatted = copy.deepcopy(val)
+            if self.val_fmt:
+                # Format the value for the actual update but not the sequence
+                # id update:
+                if self.val_seq_type == 'array':
+                    val_formatted = readwrite.format_arr(
+                        val_formatted, **fmt_arr_opt_val)[:-2]
+                else:
+                    val_formatted = self.val_fmt.format(val_formatted)
+
             # If `map_to_dict` replace the val which updates the options with a
             # dict mapping `val_name`: val and all other `additional_spec`:
-            upd_val = val
+            upd_val = val_formatted
             if self.map_to_dict:
                 # TODO move this check to _validate_spec
                 if not self.val_name:
@@ -220,7 +235,7 @@ class SimSequence(object):
                     raise ValueError(msg)
 
                 upd_val = {
-                    self.val_name: val,
+                    self.val_name: val_formatted,
                     **self.additional_spec,
                 }
 
