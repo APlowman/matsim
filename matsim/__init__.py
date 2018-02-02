@@ -41,3 +41,13 @@ JS_TEMPLATE_DIR = os.path.join(_SCRIPTS_PATH, 'set_up', 'jobscript_templates')
 # Parse the sequences.yml sequence definitions:
 with open(SEQ_FN, 'r') as seq_defn_fp:
     SEQ_DEFN = yaml.safe_load(seq_defn_fp)
+
+# Parse the process.yml options:
+with open(PROCESS_FN, 'r') as pr_opts_fp:
+    _PR_OPTS_RAW = yaml.safe_load(pr_opts_fp)
+PR_OPTS = parse_opt(_PR_OPTS_RAW, OPTSPEC['process'])
+
+# Parse the update.yml options:
+with open(UPDATE_FN, 'r') as up_opts_fp:
+    _UP_OPTS_RAW = yaml.safe_load(up_opts_fp)
+    UP_OPTS = parse_opt(_UP_OPTS_RAW, OPTSPEC['update'])
