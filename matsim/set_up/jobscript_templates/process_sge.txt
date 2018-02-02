@@ -3,6 +3,7 @@
 #$ -S /bin/bash
 #$ -N <replace_with_process_job_name>
 #$ -cwd
+#$ -V
 #$ -o output/
 #$ -e output/
 #$ -t <replace_with_job_index_range>
