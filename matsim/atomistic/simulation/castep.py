@@ -2,7 +2,7 @@
 
 import numpy as np
 
-from matsim.atomistic.software.castep import write_castep_inputs
+from matsim.atomistic.software import castep as castepio
 from matsim.atomistic.simulation import SUPERCELL_TYPE_LOOKUP
 from matsim.atomistic.simulation.sim import AtomisticSimulation
 
@@ -113,7 +113,7 @@ class CastepSimulation(AtomisticSimulation):
             **common_params
         }
 
-        write_castep_inputs(**cst_in_params)
+        castepio.write_castep_inputs(**cst_in_params)
 
     def to_jsonable(self):
         """Generate a dict representation that can be JSON serialised."""
@@ -156,3 +156,17 @@ class CastepSimulation(AtomisticSimulation):
             'runs': runs_native,
         })
         return cls(state=state)
+
+    def check_success(self, path):
+        """Check a given run of this simulation has succeeded."""
+
+        castep_opt = self.options['params']['castep']
+        castep_task = castep_opt['param']['task'].upper()
+        geom_opt_str = ['GEOMETRYOPTIMISATION', 'GEOMETRYOPTIMIZATION']
+
+        if castep_task in geom_opt_str:
+            success_func = castepio.check_success_geom_opt
+        else:
+            success_func = castepio.check_success_single_point
+
+        return success_func(path)

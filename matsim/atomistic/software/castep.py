@@ -201,15 +201,15 @@ def write_castep_inputs(supercell, atom_sites, species, species_idx, path,
 
                 if v.ndim != 1:
                     raise ValueError('`atom_constraints[{}]` must be a 1D list, '
-                                    '1D array or str.'.format(k))
+                                     '1D array or str.'.format(k))
 
                 if v.min() < 1 or v.max() > atom_sites.shape[1]:
                     raise IndexError('`atom_constraints[{}]` must index '
-                                    '`atom_sites`'.format(k))
+                                     '`atom_sites`'.format(k))
 
             elif v is not None:
                 raise ValueError('`atom_constraints[{}]` must be a 1D list or 1D '
-                                'array.'.format(k))
+                                 'array.'.format(k))
 
         f_xy = atom_constraints.get('fix_xy_idx')
         f_xz = atom_constraints.get('fix_xz_idx')
@@ -232,7 +232,7 @@ def write_castep_inputs(supercell, atom_sites, species, species_idx, path,
             if len(pair[0]) > 0 and len(pair[1]) > 0:
                 if len(np.intersect1d(pair[0], pair[1])) > 0:
                     raise ValueError('`{}_idx` and `{}_idx`  cannot '
-                                    'contain the same indices.'.format(pair[0], pair[1]))
+                                     'contain the same indices.'.format(pair[0], pair[1]))
 
     os.makedirs(path, exist_ok=True)
 
@@ -263,7 +263,7 @@ def write_castep_inputs(supercell, atom_sites, species, species_idx, path,
             encoded_params = get_castep_cell_constraints(**cell_constraints)
 
             if (not (encoded_params[0] == [1, 2, 3] and
-                    encoded_params[1] == [4, 5, 6])) and (
+                     encoded_params[1] == [4, 5, 6])) and (
                     task in geom_opt_str):
 
                 if (encoded_params[0] == [0, 0, 0] and
@@ -304,7 +304,7 @@ def write_castep_inputs(supercell, atom_sites, species, species_idx, path,
                     f_xyz_cnst_coef = np.tile(np.eye(3), (nc_xyz, 1))
 
                     cnst_arrs_xyz = [f_xyz_cnst_idx, f_xyz_sp, f_xyz_sub_idx,
-                                    f_xyz_cnst_coef]
+                                     f_xyz_cnst_coef]
 
                     cf.write(format_arr(cnst_arrs_xyz,
                                         format_spec=cnst_fs,
@@ -316,7 +316,7 @@ def write_castep_inputs(supercell, atom_sites, species, species_idx, path,
                         atom_species[f_xy], (1, 2)).reshape(nc_xy * 2, 1)
                     f_xy_sub_idx = np.repeat(sub_idx[f_xy], 2)[:, np.newaxis]
                     f_xy_cnst_idx = (np.arange(nc_xy * 2) + 1 +
-                                    (nc_xyz * 3))[:, np.newaxis]
+                                     (nc_xyz * 3))[:, np.newaxis]
                     f_xy_cnst_coef = np.tile(np.eye(3)[[0, 1]], (nc_xy, 1))
 
                     cnst_arrs_xy = [f_xy_cnst_idx, f_xy_sp, f_xy_sub_idx,
@@ -332,7 +332,7 @@ def write_castep_inputs(supercell, atom_sites, species, species_idx, path,
                         atom_species[f_xz], (1, 2)).reshape(nc_xz * 2, 1)
                     f_xz_sub_idx = np.repeat(sub_idx[f_xz], 2)[:, np.newaxis]
                     f_xz_cnst_idx = (np.arange(nc_xz * 2) + 1 +
-                                    (nc_xy * 2) + (nc_xyz * 3))[:, np.newaxis]
+                                     (nc_xy * 2) + (nc_xyz * 3))[:, np.newaxis]
                     f_xz_cnst_coef = np.tile(np.eye(3)[[0, 2]], (nc_xz, 1))
 
                     cnst_arrs_xz = [f_xz_cnst_idx, f_xz_sp, f_xz_sub_idx,
@@ -348,7 +348,7 @@ def write_castep_inputs(supercell, atom_sites, species, species_idx, path,
                         atom_species[f_yz], (1, 2)).reshape(nc_yz * 2, 1)
                     f_yz_sub_idx = np.repeat(sub_idx[f_yz], 2)[:, np.newaxis]
                     f_yz_cnst_idx = (np.arange(nc_yz * 2) + 1 + (nc_xz * 2) +
-                                    (nc_xy * 2) + (nc_xyz * 3))[:, np.newaxis]
+                                     (nc_xy * 2) + (nc_xyz * 3))[:, np.newaxis]
 
                     f_yz_cnst_coef = np.tile(np.eye(3)[[1, 2]], (nc_yz, 1))
 
@@ -1476,13 +1476,19 @@ def read_cell_file(cellfile):
         for ln_i, ln in enumerate(lines):
             if '%BLOCK lattice_cart' in ln or '%block lattice_cart' in ln:
                 if 'ANG' in lines[ln_i + 1]:
-                    cell_vecs[0, :] = [float(x) for x in lines[ln_i + 2].split()]
-                    cell_vecs[1, :] = [float(x) for x in lines[ln_i + 3].split()]
-                    cell_vecs[2, :] = [float(x) for x in lines[ln_i + 4].split()]
+                    cell_vecs[0, :] = [float(x)
+                                       for x in lines[ln_i + 2].split()]
+                    cell_vecs[1, :] = [float(x)
+                                       for x in lines[ln_i + 3].split()]
+                    cell_vecs[2, :] = [float(x)
+                                       for x in lines[ln_i + 4].split()]
                 else:
-                    cell_vecs[0, :] = [float(x) for x in lines[ln_i + 1].split()]
-                    cell_vecs[1, :] = [float(x) for x in lines[ln_i + 2].split()]
-                    cell_vecs[2, :] = [float(x) for x in lines[ln_i + 3].split()]
+                    cell_vecs[0, :] = [float(x)
+                                       for x in lines[ln_i + 1].split()]
+                    cell_vecs[1, :] = [float(x)
+                                       for x in lines[ln_i + 2].split()]
+                    cell_vecs[2, :] = [float(x)
+                                       for x in lines[ln_i + 3].split()]
 
             if coordtype == 'frac':
                 if '%BLOCK positions_frac' in ln or '%block positions_frac' in ln:
@@ -1571,3 +1577,17 @@ def map_species_to_castep(species, species_idx):
     map_idx = np.concatenate(map_sort)
 
     return map_idx
+
+
+def check_success_single_point(dir_path):
+    """Check if the files in a given directory are indicative of
+    a successful CASTEP SinglePoint run.
+
+    """
+
+
+def check_success_geom_opt(dir_path):
+    """Check if the files in a given directory are indicative of
+    a successful CASTEP GeometryOptimisation run.
+
+    """
