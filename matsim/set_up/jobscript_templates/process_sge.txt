@@ -11,5 +11,5 @@
 
 # Run process for this sim group, and run group idx, after each run finishes:
 source activate matsim
-python matsim process <replace_with_sim_group_human_id> <replace_with_run_group_idx>
+matsim process <replace_with_sim_group_human_id> <replace_with_run_group_idx>
 source deactivate
