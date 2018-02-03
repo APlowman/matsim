@@ -773,6 +773,9 @@ def get_resource_connections(user_cred=None):
             source.update({
                 'archive_id': res_conn['archive_src_resource_id'],
             })
+        source.update({
+            'name': res_conn['src_name'],
+        })
 
         # Destination:
         dst_ids = [
@@ -803,6 +806,9 @@ def get_resource_connections(user_cred=None):
             destination.update({
                 'archive_id': res_conn['archive_dst_resource_id'],
             })
+        destination.update({
+            'name': res_conn['dst_name'],
+        })
 
         # Now overwrite the list with more useful keys:
         res_conn_all[res_conn_idx] = {
