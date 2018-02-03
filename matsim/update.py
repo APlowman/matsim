@@ -13,6 +13,10 @@ from matsim.utils import prt, SpinnerThread
 def parse_task_id(task_id_str):
     """Parse a task id str from `qstat` output."""
 
+    if ',' in task_id_str:
+        task_id_str = task_id_str.replace(',', '-')
+        task_id_str += ':1'
+
     split_low = task_id_str.split('-')
     start = int(split_low[0])
     split_high = split_low[1].split(':')
@@ -78,7 +82,7 @@ def parse_raw_qstat(qstat_lines):
             'task_id': task_id
         }
 
-        if task_id and '-' in task_id:
+        if task_id and ('-' in task_id or ',' in task_id):
             # Expand job array into multiple jobs:
             job_dicts = expand_job_arrays(job_dict)
 
