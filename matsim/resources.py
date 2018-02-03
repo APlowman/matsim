@@ -43,6 +43,11 @@ class Resource(object):
         self.os_type = res_defn['machine_os_type']
         self.is_dropbox = res_defn['machine_is_dropbox']
 
+        try:
+            self.make_paths_concrete()
+        except NotImplementedError:
+            pass
+
     def make_paths_concrete(self):
         """Convert `base_path` and `path` to "concrete" path objects.
 
@@ -72,7 +77,6 @@ class Stage(Resource):
         super().__init__(res_id, add_path)
         self.name = name
         self.stage_id = stage_defn['stage_id']
-        self.make_paths_concrete()
 
 
 class Scratch(Resource):
@@ -148,7 +152,7 @@ class ResourceConnection(object):
         """
         # Check source base path exists:
         if not self.src.base_path.exists():
-            msg = 'Source `base_path` "" does not exist.'
+            msg = 'Source `base_path` "{}" does not exist.'
             raise ValueError(msg.format(self.src.base_path))
 
         if self.remote:
