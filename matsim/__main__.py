@@ -37,7 +37,7 @@ def main(args=sys.argv):
 
         from matsim.simulation.simgroup import SimGroup
 
-        sim_group = SimGroup.load_state(args[2], 'stage', SEQ_DEFN)
+        sim_group = SimGroup.load_state(args[2], 'stage')
         run_group_idx = int(args[3])
         sim_group.submit_run_groups([run_group_idx])
 
@@ -46,7 +46,7 @@ def main(args=sys.argv):
         from matsim.simulation import process
         from matsim.simulation.simgroup import SimGroup
 
-        sim_group = SimGroup.load_state(args[2], 'scratch', SEQ_DEFN)
+        sim_group = SimGroup.load_state(args[2], 'scratch')
         proc_args = [sim_group]
         if len(args) == 4:
             run_group_idx = int(args[3])
