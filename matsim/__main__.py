@@ -38,6 +38,9 @@ def main(args=sys.argv):
         from matsim.simulation.simgroup import SimGroup
 
         sim_group = SimGroup.load_state(args[2], 'stage')
+
+        prt(sim_group.run_options, 'run opt')
+
         run_group_idx = int(args[3])
         sim_group.submit_run_groups([run_group_idx])
 

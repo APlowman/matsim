@@ -25,20 +25,23 @@ def main(sim_group, run_group_idx=None):
 
     """
 
+    # prt(sim_group, 'sim_group')
+    sg_id = sim_group.db_id
+    # prt(sg_id, 'sg_id')
+
     # Update (SGE) run states in database:
     update.main()
 
     sim_group.check_is_scratch_machine()
-    sg_id = sim_group.db_id
-
-    # prt(sg_id, 'sg_id')
 
     # Find all runs belonging to this run group in states 6 "pending_process"
     # or state 8 "process_no_errors" (which normally should only be a transient
     # state):
     pending_process = database.get_sim_group_runs(sg_id, [6, 8])
-    prt(pending_process, 'pending_process runs')
-    prt(run_group_idx, 'run_group_idx')
+
+    print('Found {} run(s) to process.'.format(len(pending_process)))
+    # prt(pending_process, 'pending_process runs')
+    # prt(run_group_idx, 'run_group_idx')
 
     if run_group_idx:
 

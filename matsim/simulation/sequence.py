@@ -10,6 +10,11 @@ from matsim.utils import (set_nested_dict, get_recursive, update_dict, prt,
                           mut_exc_args, merge, nest)
 from matsim import readwrite
 from matsim.simulation import BaseUpdate
+from matsim.simulation import sequence_funcs
+
+SEQUENCE_FUNC_LOOKUP = {
+    'kpoint_mp_spacing': sequence_funcs.process_kpoint_sequence,
+}
 
 
 def merge_parallel_seqences(sequences):
@@ -61,12 +66,12 @@ class SimSequence(object):
         self.spec = copy.deepcopy(spec)
 
         self.base_dict = params['base_dict']
-        self.func = params['func']
         self.range_allowed = params['range_allowed']
         self.update_mode = params['update_mode']
         self.val_seq_type = params['val_seq_type']
         self.map_to_dict = params['map_to_dict']
         self.val_name = params['val_name']
+        self.path_fmt_val_idx = params.get('path_fmt_val_idx', False)
 
         self.name = spec.pop('name')
         self.nest_idx = spec.pop('nest_idx')
@@ -80,7 +85,7 @@ class SimSequence(object):
         self.vals = self._parse_vals(**vals_spec)
         self.additional_spec = spec
 
-        self.updates = self._get_updates()
+        self.updates = self._get_updates(base_sim)
 
     def to_jsonable(self):
         """Generate a dict representation that can be JSON serialised."""
@@ -115,7 +120,6 @@ class SimSequence(object):
         # Keys allowed in the sequence definition (from sequences.yml):
         req_params = [
             'base_dict',
-            'func',
             'range_allowed',
             'val_seq_type',
             'update_mode',
@@ -211,7 +215,7 @@ class SimSequence(object):
         """Get the number of values (simulations) in the sequence."""
         return len(self.vals)
 
-    def _get_updates(self):
+    def _get_updates(self, base_sim):
         """
         Build a list of update dicts to be applied to the base options for each
         element in the group.
@@ -219,8 +223,9 @@ class SimSequence(object):
         """
 
         # Run any additional processing on the `vals`
-        if self.func:
-            self.func(self)
+        func = SEQUENCE_FUNC_LOOKUP.get(self.name)
+        if func:
+            func(self, base_sim)
 
         fmt_arr_opt_path = {
             'col_delim': '_',
@@ -239,13 +244,18 @@ class SimSequence(object):
         nest_add = ['sequence_id', 'nest_idx']
 
         updates = []
-        for val in self.vals:
+        for val_idx, val in enumerate(self.vals):
 
-            if self.val_seq_type == 'array':
-                path_str = readwrite.format_arr(val, **fmt_arr_opt_path)[:-2]
+            if self.path_fmt_val_idx:
+                path_str = self.path_fmt.format(val_idx)
 
             else:
-                path_str = self.path_fmt.format(val)
+                if self.val_seq_type == 'array':
+                    path_str = readwrite.format_arr(
+                        val, **fmt_arr_opt_path)[:-2]
+
+                else:
+                    path_str = self.path_fmt.format(val)
 
             val_formatted = copy.deepcopy(val)
             if self.val_fmt:

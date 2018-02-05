@@ -25,6 +25,9 @@ class LammpsSimulation(AtomisticSimulation):
     def copy_reference_data(cls, sim_params, stage_path, scratch_path):
         """Copy potential files."""
 
+        print('Copying LAMMPS reference data -- PENDING')
+
+        # prt(sim_params, 'sim_pamras')
         for key, pot_fn in sim_params['potential_files'].items():
 
             # Copy potential files to the sim group directory:
@@ -39,21 +42,33 @@ class LammpsSimulation(AtomisticSimulation):
                 raise ValueError(msg.format(pot_path))
 
             # Map correct file names for the potentials:
-            for int_idx, inter in enumerate(sim_params['interactions']):
+            for int_block_idx, _ in enumerate(sim_params['interactions']):
 
-                if key in inter:
-                    path_scratch = '"' + str(path_scratch) + '"'
-                    new_inter = inter.replace(key, path_scratch)
-                    sim_params['interactions'][int_idx] = new_inter
+                int_block = sim_params['interactions'][int_block_idx]
+                # prt(int_block, 'int_block')
+
+                for int_line_idx, _ in enumerate(int_block):
+
+                    int_line = int_block[int_line_idx]
+                    # prt(int_line, 'int_line')
+
+                    if key in int_line:
+                        print('key: {} in line..'.format(key))
+                        path_scratch = '"' + str(path_scratch) + '"'
+                        new_inter = int_line.replace(key, path_scratch)
+                        sim_params['interactions'][int_block_idx][int_line_idx] = new_inter
 
         # Remove potential files list from options:
         del sim_params['potential_files']
+
+        print('Copying LAMMPS reference data -- DONE')
 
     def _process_options(self):
         """Additional processing on LAMMPS options to prepare for writing input
         files.
 
         """
+        print('in process opts')
         super()._process_options()
 
         lammps_opts = self.options['params']['lammps']
@@ -74,8 +89,15 @@ class LammpsSimulation(AtomisticSimulation):
 
     def write_input_files(self, path):
 
+        lammps_opts = self.options['params']['lammps']
+        if lammps_opts.get('interaction_idx') is not None:
+            # Resolve correct interactions block (may have already been
+            # resolved from a previous run -- this is not ideal behaviour...)
+            int_idx = lammps_opts.pop('interaction_idx')
+            lammps_opts['interactions'] = lammps_opts['interactions'][int_idx]
+
         lmp_in_params = {
-            **self.options['params']['lammps'],
+            **lammps_opts,
             'supercell': self.structure.supercell,
             'atom_sites': self.structure.atom_sites,
             'species': self.structure.species,

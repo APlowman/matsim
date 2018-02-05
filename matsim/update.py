@@ -135,12 +135,11 @@ def main():
         raise ValueError(msg.format(mach_name))
 
     # Get resource connections from this Stage to all available Scratches:
-    res_conns_defn = database.get_resource_connections_by_source(
-        stage.resource_id)
-    dest_res_ids = [i['destination_id'] for i in res_conns_defn]
 
-    spinner_thread = SpinnerThread('Updating database')
-    spinner_thread.start()
+    scratches = database.get_scratches_from_stage(stage.resource_id)
+    dest_res_ids = [i['destination_id'] for i in scratches]
+
+    print('Updating database -- PENDING')
 
     for res_id in dest_res_ids:
 
@@ -199,5 +198,4 @@ def main():
         database.set_many_run_states(state_5_run_ids, 5)
         database.set_many_run_states(state_6_run_ids, 6)
 
-    spinner_thread.stop()
-    print("Database updated!")
+    print('Updating database -- DONE')

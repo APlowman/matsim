@@ -1,23 +1,42 @@
+"""`matsim.dbhelpers.py
+
+Dropbox helper functions.
+
+"""
 import dropbox
 import os
 import posixpath
 import fnmatch
-from matsim import SET_UP_PATH
+from matsim import CONFIG
 
 
-def get_dropbox():
-    secret_path = os.path.join(SET_UP_PATH, 'secret.txt')
-    with open(secret_path, 'r') as f:
-        key = f.readline().strip()
+def get_dropbox(key=None):
+    if not key:
+        key = CONFIG['dropbox']
     return dropbox.Dropbox(key)
 
 
-def check_dropbox_file_exist(dbx, dropbox_path):
+def is_file(dbx, path):
+    """Check given path on dropbox is a file."""
+    meta = dbx.files_get_metadata(path)
+    return isinstance(meta, dropbox.files.FileMetadata)
+
+
+def is_folder(dbx, path):
+    """Check given path on dropbox is a folder."""
     try:
-        dbx.files_get_metadata(dropbox_path)
-        return True
-    except:
-        return False
+        meta = dbx.files_get_metadata(path)
+        return isinstance(meta, dropbox.files.FolderMetadata)
+    except dropbox.exceptions.ApiError as api_err:
+        raise ValueError('Path not found on Dropbox: {}'.format(path))
+
+
+def rename_file(dbx, src_path, dst_path):
+    """Rename a file from one path to another."""
+    if is_file(dbx, src_path):
+        dbx.files_move_v2(src_path, dst_path)
+    else:
+        raise ValueError('Cannot rename a file that does not exist.')
 
 
 def download_dropbox_file(dbx, dropbox_path, local_path):
@@ -53,7 +72,7 @@ def upload_dropbox_file(dbx, local_path, dropbox_path, overwrite=False,
 
 
 def upload_dropbox_dir(dbx, local_path, dropbox_path, overwrite=False,
-                       autorename=False, include=None, exclude=None):
+                       autorename=False, exclude=None):
     """
     Parameters
     ----------
@@ -66,13 +85,9 @@ def upload_dropbox_dir(dbx, local_path, dropbox_path, overwrite=False,
         If True, the file overwrites an existing file with the same name.
     autorename : bool
         If True, rename the file if there is a conflict.
-    include : list, optional
-        List of file names to include, matched with `fnmatch`. If specified,
-        only matched file names will be uploaded. Either specify `include` or
-        `exclude` but not both.
     exclude : list, optional
-        List of file names to exclude, matched with `fnmatch`. Either specify
-        `include` or `exclude` but not both.
+        List of file or directory names to exclude, matched with `fnmatch` for
+        files, or compared directly for directories.
 
     Notes
     -----
@@ -80,37 +95,33 @@ def upload_dropbox_dir(dbx, local_path, dropbox_path, overwrite=False,
 
     """
 
-    # Validation
-    if include is not None and exclude is not None:
-        raise ValueError('Either specify `include` or `exclude` but not both.')
+    print('exclude is : {}'.format(exclude))
 
+    # Validation
     if not os.path.isdir(local_path):
         raise ValueError(
             'Specified `local_path` is not a directory: {}'.format(local_path))
 
     for root, dirs, files in os.walk(local_path):
 
+        dirs[:] = [d for d in dirs if d not in exclude]
+
         print('Uploading from root directory: {}'.format(root))
 
-        for fn in files:
+        for file_name in files:
 
             up_file = False
 
-            if include is not None:
-                if any([fnmatch.fnmatch(fn, i) for i in include]):
+            if exclude is not None:
+                if not any([fnmatch.fnmatch(file_name, i) for i in exclude]):
                     up_file = True
-
-            elif exclude is not None:
-                if not any([fnmatch.fnmatch(fn, i) for i in exclude]):
-                    up_file = True
-
             else:
                 up_file = True
 
             if up_file:
 
                 # Source path
-                src_fn = os.path.join(root, fn)
+                src_fn = os.path.join(root, file_name)
 
                 # Destination path
                 rel_path = os.path.relpath(src_fn, local_path)
@@ -119,6 +130,6 @@ def upload_dropbox_dir(dbx, local_path, dropbox_path, overwrite=False,
                 if not dst_fn.startswith('/'):
                     dst_fn = '/' + dst_fn
 
-                print('Uploading file: {}'.format(fn))
+                print('Uploading file: {}'.format(file_name))
                 upload_dropbox_file(dbx, src_fn, dst_fn,
                                     overwrite=overwrite, autorename=autorename)

@@ -18,7 +18,7 @@ jsonpickle_numpy.register_handlers()
 
 from matsim import (JS_TEMPLATE_DIR, utils, parse_opt, CONFIG, DB_CONFIG,
                     database, OPTSPEC)
-from matsim.simulation import BaseUpdate
+from matsim.simulation import BaseUpdate, apply_base_update
 from matsim.simulation import process
 from matsim.simulation.sequence import SimSequence
 from matsim.atomistic.simulation.castep import CastepSimulation
@@ -270,7 +270,7 @@ class SimGroup(object):
     }
 
     def __init__(self, base_sim_options, run_options, path_options, sim_updates,
-                 sequences, human_id, name, sims, db_id=None):
+                 sequences, human_id, name, sims=None, db_id=None):
         """Initialise a SimGroup object."""
 
         self.base_sim_options = base_sim_options
@@ -323,6 +323,8 @@ class SimGroup(object):
 
     def save_state(self, resource_type, path=None):
 
+        print('Saving SimGroup state -- PENDING')
+
         json_fn = 'sim_group.json'
 
         if resource_type == 'stage':
@@ -337,8 +339,37 @@ class SimGroup(object):
         jsonpickle.set_encoder_options('json', sort_keys=True, indent=4)
         state = jsonpickle.encode(self)
 
+        pick = jsonpickle.pickler.Pickler()
+
+        state = {
+            'base_sim_options': pick.flatten(self.base_sim_options),
+            'sim_updates': pick.flatten(self.sim_updates),
+            'sims': pick.flatten(self.sims),
+            'sequences': pick.flatten(self.sequences),
+        }
+
         with json_path.open('w') as sim_group_fp:
-            sim_group_fp.write(state)
+            json.dump(state, sim_group_fp, indent=2)
+
+        print('Saving SimGroup state -- DONE')
+
+    def generate_sim_group_sims(self):
+        """Generate a list of simulations."""
+
+        print('Generating Simulation objects -- PENDING')
+        sims = []
+        for sim_upds_idx, sim_upds in enumerate(self.sim_updates):
+
+            print('GEN SIM: {}'.format(sim_upds_idx))
+            sim_opt = copy.deepcopy(self.base_sim_options)
+
+            for upd in sim_upds:
+                sim_opt = apply_base_update(sim_opt, upd)
+
+            sims.append(self.sim_class(sim_opt))
+
+        print('Generating Simulation objects -- DONE')
+        self.sims = sims
 
     @classmethod
     def load_state(cls, human_id, resource_type):
@@ -377,32 +408,55 @@ class SimGroup(object):
         elif resource_type == 'archive':
             json_path = archive.path.joinpath(json_fn)
 
+        unpick = jsonpickle.unpickler.Unpickler()
+
         with open(json_path, 'r') as sim_group_fp:
+            json_data = json.load(sim_group_fp)
 
-            json_data = sim_group_fp.read()
-            state = jsonpickle.decode(json_data)
+        sg_params['run_opt'].update({
+            'stage': stage,
+            'scratch': scratch,
+            'archive': archive,
+        })
 
-        return state
+        state = {
+            'base_sim_options': unpick.restore(json_data['base_sim_options']),
+            'sim_updates': unpick.restore(json_data['sim_updates']),
+            'sims': unpick.restore(json_data['sims']),
+            'sequences': unpick.restore(json_data['sequences']),
+            'path_options': sg_params['path_options'],
+            'run_options': sg_params['run_opt'],
+            'human_id': sg_params['human_id'],
+            'name': sg_params['name'],
+            'db_id': sg_params['db_id'],
+        }
+
+        return cls(**state)
 
     def write_initial_runs(self):
         """Populate the sims attribute and write input files on stage."""
 
-        # if self.sims is not None:
-        #     raise ValueError('Simulations have already been generated for this'
-        #                      ' SimGroup object.')
+        if self.sims is not None:
+            raise ValueError('Simulations have already been generated for this'
+                             ' SimGroup object.')
 
         # Check this machine is the stage machine
         if self.stage.machine_name != CONFIG['machine_name']:
             raise ValueError('This machine does not have the same name as that '
                              'of the Stage associated with this SimGroup.')
 
+        print('Writing simulation inputs -- PENDING')
+
         stage_path = self.stage.path
         scratch_path = self.scratch.path
         stage_path.mkdir(parents=True)
 
         sim_params = self.base_sim_options['params'][self.software_name]
+
         self.sim_class.copy_reference_data(
             sim_params, stage_path, scratch_path)
+
+        self.generate_sim_group_sims()
 
         # Loop through each requested run group:
         for rg_idx, run_group in enumerate(self.run_options['groups']):
@@ -418,6 +472,8 @@ class SimGroup(object):
                 sm_pth_sct = scratch_path.joinpath(*run_path)
                 sim_paths_stage.append(sm_pth_stg)
                 sim_paths_scratch.append(str(sm_pth_sct))
+
+                print('write sim_idx: {}'.format(sim_idx))
 
                 # Write simulation input files:
                 self.sims[sim_idx].write_input_files(str(sm_pth_stg))
@@ -468,6 +524,8 @@ class SimGroup(object):
                 }
                 write_process_jobscript(**pjs_params)
 
+        print('Writing simulation inputs -- DONE')
+
     def auto_submit_initial_runs(self):
         """Submit initial runs according the the run group flag `auto_submit`"""
 
@@ -493,7 +551,7 @@ class SimGroup(object):
                     print('Run group #{} was NOT submitted.'.format(ask_sub))
 
         if no_sub_idx:
-            print('Run groups: {} were not submitted.'.format(no_sub_idx))
+            print('Run groups: {} will not be auto-submitted.'.format(no_sub_idx))
 
         if auto_sub_idx:
             print('Auto-submitting run groups: {}'.format(auto_sub_idx))
@@ -554,28 +612,19 @@ class SimGroup(object):
                 rg_id, hostname, submit_time, run_state_id)
 
             # Check if submit process has ended:
-
-            pending_strs = ['|', '/', '-', '\\']
-            count = 0
-
             if self.scratch.sge:
-                msg = 'Submitting to SGE - PENDING {}\r'
-                msg_done = 'Submitting to SGE - COMPLETE '
+                msg = 'Submitting to SGE - PENDING'
+                msg_done = 'Submitting to SGE - DONE'
             else:
-                msg = 'Running sims - PENDING {}\r'
-                msg_done = 'Running sims - COMPLETE '
+                msg = 'Running sims - PENDING'
+                msg_done = 'Running sims - DONE'
 
-            # TODO use SpinnerThread class instead here
+            print(msg)
+
             while True:
-                # Only poll the process every 1 second:
-                if int(count / 10) == count / 10:
-                    if submit_proc.poll() is not None:
-                        break
-
-                sys.stdout.write(msg.format(pending_strs[count % 4]))
-                sys.stdout.flush()
-                count += 1
-                time.sleep(0.1)
+                if submit_proc.poll() is not None:
+                    break
+                time.sleep(0.5)
 
             # At this point either the simulations have been run, or
             # submitted (if SGE).
@@ -612,18 +661,12 @@ class SimGroup(object):
                     submit_process_proc = conn.run_command(
                         cmd, cwd=rg_path, block=False)
 
-                    # TODO use SpinnerThread class instead here
                     msg = 'Submitting process job to SGE - PENDING {}\r'
                     msg_done = 'Submitting process job to SGE - COMPLETE '
+                    print(msg)
                     while True:
-                        # Only poll the process every 1 second:
-                        if int(count / 10) == count / 10:
-                            if submit_process_proc.poll() is not None:
-                                break
-
-                        sys.stdout.write(msg.format(pending_strs[count % 4]))
-                        sys.stdout.flush()
-                        count += 1
+                        if submit_process_proc.poll() is not None:
+                            break
                         time.sleep(0.1)
 
                     # At this point either the simulations have been run, or
@@ -663,6 +706,7 @@ class SimGroup(object):
             print('Sim group was NOT copied to scratch.')
 
         else:
+            print('Copying SimGroup to Scratch -- PENDING')
             self.check_is_stage_machine()
 
             # Copy directory to scratch:
@@ -673,6 +717,8 @@ class SimGroup(object):
             run_groups = database.get_run_groups(self.db_id)
             for rg_id in [i['id'] for i in run_groups]:
                 database.set_all_run_states(rg_id, 2)
+
+            print('Copying SimGroup to Scratch -- DONE')
 
         return do_copy
 

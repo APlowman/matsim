@@ -6,6 +6,14 @@ from passlib.hash import pbkdf2_sha256
 
 from matsim import DB_CONFIG, CONFIG
 
+_AUTO_LOOKUP = {
+    True: 'true',
+    False: 'false',
+    'ask': 'ask',
+    'true': True,
+    'false': False,
+}
+
 
 def connect_db():
     """Connect to the database."""
@@ -484,6 +492,31 @@ def get_scratch_by_resource_id(resource_id, user_cred=None):
     return scratch
 
 
+def get_stage_by_resource_id(resource_id, user_cred=None):
+    """Get a stage resource by its resource ID."""
+
+    user_cred = user_cred or CONFIG['user']
+    user_id = get_user_id(user_cred)
+
+    sql = (
+        'select s.id "stage_id" '
+        'r.id "resource_id", r.name "name" '
+        'from stage s '
+        'inner join resource r on s.resource_id = r.id '
+        'inner join machine m on r.machine_id = m.id '
+        'where '
+        'm.user_account_id = %s and '
+        'r.id = %s'
+    )
+    stage = exec_select(sql, (user_id, resource_id))
+
+    if not stage:
+        msg = ('No stage with resource ID "{}" exists for given user.')
+        raise ValueError(msg.format(resource_id))
+
+    return stage
+
+
 def get_stage_by_name(name, user_cred=None):
     """Get a stage resource by name."""
 
@@ -614,6 +647,23 @@ def get_resource_connections_by_source(src_res_id, user_cred=None):
     return res_conn
 
 
+def get_scratches_from_stage(stage_res_id, user_cred=None):
+    """Get resource IDs of all scratches connectable from a given Stage
+    resource ID.
+
+    """
+
+    check_resource_ownership(stage_res_id, user_cred)
+
+    sql = (
+        'select rc.destination_id from resource_connection rc '
+        'inner join scratch sc on sc.resource_id = rc.destination_id '
+        'where rc.source_id = %s'
+    )
+
+    return exec_select(sql, (stage_res_id,), fetch_all=True)
+
+
 def get_archives(user_cred=None):
     """Retrieve all archive resources belonging to a user."""
 
@@ -663,7 +713,7 @@ def get_resource_by_name_type(res_name, res_type, user_cred=None):
 
 
 def add_resource_connection(source_name, source_type, dest_name, dest_type,
-                            host, user_cred=None):
+                            host=None, user_cred=None):
     """Add a resource connection between a source and destination."""
 
     user_cred = user_cred or CONFIG['user']
@@ -1055,7 +1105,9 @@ def get_sim_group(human_id, user_cred=None):
     # Get run groups:
     software_name = None
     all_run_groups = get_run_groups(sg_id)
-    for run_group in all_run_groups:
+    for rg_idx, _ in enumerate(all_run_groups):
+
+        run_group = all_run_groups[rg_idx]
 
         # get software instance name:
         soft_inst = get_software_instance_by_id(
@@ -1071,12 +1123,21 @@ def get_sim_group(human_id, user_cred=None):
         elif software_name != rg_soft_name:
             raise ValueError('Software name problemo!')
 
+        run_group.update({
+            'db_id': run_group.pop('id'),
+            'auto_submit': _AUTO_LOOKUP[run_group['auto_submit']],
+            'auto_process': _AUTO_LOOKUP[run_group['auto_process']],
+        })
+
         run_opt['groups'].append({
             **run_group,
             'software_instance': soft_inst,
             'software_name': rg_soft_name,
         })
 
+    run_opt.update({
+        'software_name': rg_soft_name,
+    })
     sim_group.update({
         'run_opt': run_opt
     })
@@ -1214,7 +1275,8 @@ def get_run_groups(sim_group_id, user_cred=None):
     return run_groups
 
 
-def add_run_group(sim_group_id, run_group, sim_insert_ids, run_state, sge, user_cred=None):
+def add_run_group(sim_group_id, run_group, sim_insert_ids, run_state, sge,
+                  user_cred=None):
     """Add a run group to a given sim group."""
 
     # First get existing run groups:
@@ -1224,14 +1286,18 @@ def add_run_group(sim_group_id, run_group, sim_insert_ids, run_state, sge, user_
     # Add to run_group table:
     sql = (
         'insert into run_group '
-        '(sim_group_id, software_instance_id, num_cores, order_id) '
-        'values (%s, %s, %s, %s)'
+        '(sim_group_id, software_instance_id, num_cores, order_id, '
+        'auto_submit, auto_process) '
+        'values (%s, %s, %s, %s, %s, %s)'
     )
+
     rg_insert_id = exec_insert(sql, (
         sim_group_id,
         run_group['software_instance']['id'],
         run_group['num_cores'],
-        order_id
+        order_id,
+        _AUTO_LOOKUP[run_group['auto_submit']],
+        _AUTO_LOOKUP[run_group['auto_process']]
     ))
 
     rg_sge_insert_id = None
@@ -1427,10 +1493,16 @@ def set_run_group_sge_jobid(run_group_id, job_id, user_cred=None):
     exec_update(sql, (job_id, run_group_id))
 
 
-def check_scratch_ownership(srcatch_id, user_cred=None):
+def check_scratch_ownership(scratch_id, user_cred=None):
     """Check given user owns given scratch."""
 
-    get_scratch_by_id(srcatch_id, user_cred)
+    get_scratch_by_id(scratch_id, user_cred)
+
+
+def check_resource_ownership(resource_id, user_cred=None):
+    """Check given resource ID owned by given user."""
+
+    get_resource(resource_id, user_cred)
 
 
 def get_runs_by_scratch(scratch_id, run_state_ids=None, user_cred=None):

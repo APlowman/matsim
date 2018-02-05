@@ -1188,7 +1188,7 @@ import threading
 
 class SpinnerThread(threading.Thread):
 
-    def __init__(self, label='Working', delay=0.1):
+    def __init__(self, label='Working hard', delay=0.1):
         super(SpinnerThread, self).__init__()
         self.label = label
         self.delay = delay  # interval between updates
@@ -1196,10 +1196,10 @@ class SpinnerThread(threading.Thread):
 
     def start(self):
         self.running = True
-        super(SpinnerThread, self).start()
+        super().start()
 
     def run(self):
-        label = '\r' + self.label + ' '
+        label = '\r' + self.label + ' -- PENDING '
         while self.running:
             for c in ('-', '\\', '|', '/'):
                 sys.stdout.write(label + c)
@@ -1209,5 +1209,6 @@ class SpinnerThread(threading.Thread):
     def stop(self):
         self.running = False
         self.join()  # wait for run() method to terminate
-        sys.stdout.write('\r' + len(self.label) * ' ' + '\r')  # clean-up
+        label = '\r' + self.label + ' -- COMPLETE \n'
+        sys.stdout.write(label)
         sys.stdout.flush()

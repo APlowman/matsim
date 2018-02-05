@@ -83,25 +83,10 @@ def validate_run_options(run_options):
     return software_name
 
 
-def generate_sim_group_sims(base_sim_options, sim_updates, sim_class):
-    """Generate a list of simulations."""
-
-    sims = []
-    for sim_upds in sim_updates:
-
-        sim_opt = copy.deepcopy(base_sim_options)
-
-        for upd in sim_upds:
-            sim_opt = apply_base_update(sim_opt, upd)
-
-        sims.append(sim_class(sim_opt))
-
-    return sims
-
-
 def add_sim_group_to_db(sim_group):
     """Add the new sim group to the database."""
 
+    print('Adding SimGroup to the database -- PENDING')
     db_ret = dbs.add_sim_group(sim_group)
 
     # Add sim grounp database ID:
@@ -116,6 +101,8 @@ def add_sim_group_to_db(sim_group):
             'db_id': rg_ids[0],
             'sge_db_id': rg_ids[1]
         })
+
+    print('Adding SimGroup to the database -- DONE')
 
 
 def make_new_simgroup(options):
@@ -132,6 +119,8 @@ def make_new_simgroup(options):
     sim_group : SimGroup
 
     """
+
+    print('Making new SimGroup -- PENDING')
 
     path_options = options.pop('path_options')
     # TODO: deal with importing structure (and group):
@@ -161,10 +150,10 @@ def make_new_simgroup(options):
     sim_updates, sequences = get_sim_updates(seq_options, base_sim)
     validate_run_group_sim_idx(run_options, len(sim_updates))
 
-    sims = generate_sim_group_sims(base_sim_options, sim_updates, sim_class)
-
     sim_group = SimGroup(base_sim_options, run_options, path_options,
-                         sim_updates, sequences, human_id, name, sims)
+                         sim_updates, sequences, human_id, name)
+
+    print('Making new SimGroup -- DONE')
 
     return sim_group
 

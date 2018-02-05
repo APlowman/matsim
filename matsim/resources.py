@@ -1,13 +1,13 @@
+"""`matsim.resources.py`"""
 import os
 import pathlib
 import subprocess
 from datetime import datetime
 import copy
-import yaml
 import shutil
-from matsim import SET_UP_PATH, CONFIG
-from matsim import utils, database
-from matsim.utils import prt, dict_from_list, mut_exc_args
+
+from matsim import utils, database, dbhelpers as dbh
+from matsim.utils import prt
 
 
 class Resource(object):
@@ -150,6 +150,9 @@ class ResourceConnection(object):
         TODO: separate remote connection and destination base path check.
 
         """
+
+        dst_msg = 'Destination `base_path` "" does not exist.'
+
         # Check source base path exists:
         if not self.src.base_path.exists():
             msg = 'Source `base_path` "{}" does not exist.'
@@ -157,21 +160,27 @@ class ResourceConnection(object):
 
         if self.remote:
 
-            # Check remote connection can be made and destination base path exists:
-            ssh_cm = 'ssh {} "[ -d {} ]"'.format(self.host, self.dst.base_path)
-            comp_proc = subprocess.run(['bash', '-c', ssh_cm])
+            if self.dst.is_dropbox:
+                dbx = dbh.get_dropbox()
+                if not dbh.is_folder(dbx, str(self.dst.base_path)):
+                    raise ValueError(dst_msg.format(self.dst.base_path))
 
-            if comp_proc.returncode == 1:
-                msg = ('Remote connection to host "{}" could not be made, or '
-                       'destination `base_path` "{}" does not exist')
-                raise ValueError(msg.format(self.host, self.dst.base_path))
+            else:
+                # Check remote connection can be made and destination base path exists:
+                ssh_cm = 'ssh {} "[ -d {} ]"'
+                ssh_cm = ssh_cm.format(self.host, self.dst.base_path)
+                comp_proc = subprocess.run(['bash', '-c', ssh_cm])
+
+                if comp_proc.returncode == 1:
+                    msg = ('Remote connection to host "{}" could not be made, '
+                           'or destination `base_path` "{}" does not exist')
+                    raise ValueError(msg.format(self.host, self.dst.base_path))
 
         else:
 
             # Check destination base path exists:
             if not self.dst.base_path.exists():
-                msg = 'Destination `base_path` "" does not exist.'
-                raise ValueError(msg.format(self.dst.base_path))
+                raise ValueError(dst_msg.format(self.dst.base_path))
 
     def file_exist_on_src(self, subpath=None):
         """TODO"""
@@ -199,13 +208,18 @@ class ResourceConnection(object):
             Only applicable if `subpath` resolves to a directory. Patterns to
             ignore when copying (glob style).
 
+        TODO: support Dropbox destination
+
         """
 
         self.check_conn()
 
-        msg = ('Copying from resource "{}" to{} resource "{}".')
+        msg = ('\nCopying from resource "{}" to{}{} resource "{}".\n')
         is_rem_str = ' remote' if self.remote else ''
-        print(msg.format(self.src.name, is_rem_str, self.dst.name))
+        is_db_str = ' Dropbox' if self.dst.is_dropbox else ''
+        msg = msg.format(self.src.name, is_rem_str, is_db_str, self.dst.name)
+        msg += '-' * (len(msg) - 2)
+        print(msg)
 
         if subpath:
             src_path = self.src.path.joinpath(*subpath)
@@ -214,7 +228,39 @@ class ResourceConnection(object):
             src_path = self.src.path
             dst_path = self.dst.path
 
-        if self.remote:
+        msg = 'Source:      "{}"\nDestination: "{}"\n'
+        msg_fmt = [src_path, dst_path]
+        if ignore:
+            msg += 'Excluding:   "{}"\n'
+            msg_fmt += [','.join([i for i in ignore])]
+        print(msg.format(*msg_fmt))
+
+        if file_backup:
+            dt_fmt = '%Y-%m-%d-%H%M%S.'
+            bk_ts = datetime.strftime(datetime.now(), dt_fmt)
+            bk_dst_path = str(dst_path.with_name(bk_ts + dst_path.name))
+
+        if self.remote and self.dst.is_dropbox:
+
+            dbx = dbh.get_dropbox()
+            dst_path = str(dst_path)
+
+            if src_path.is_file():
+
+                src_path = str(src_path)
+
+                if file_backup and dbh.is_file(dbx, dst_path):
+                    # Rename destination file
+                    dbh.rename_file(dbx, dst_path, bk_dst_path)
+
+                dbh.upload_dropbox_file(dbx, src_path, dst_path)
+
+            else:
+
+                src_path = str(src_path)
+                dbh.upload_dropbox_dir(dbx, src_path, dst_path, exclude=ignore)
+
+        elif self.remote:
 
             orig_src_path = copy.copy(src_path)
 
@@ -236,9 +282,6 @@ class ResourceConnection(object):
                 if check_file_exist == 'found' and file_backup:
 
                     # Rename on destination:
-                    dt_fmt = '%Y-%m-%d-%H%M%S.'
-                    bk_ts = datetime.strftime(datetime.now(), dt_fmt)
-                    bk_dst_path = dst_path.with_name(bk_ts + dst_path.name)
                     cmd = 'mv {} {}'.format(dst_path, bk_dst_path)
                     self.run_command([cmd])
 
@@ -257,10 +300,7 @@ class ResourceConnection(object):
                 if dst_path.is_file() and file_backup:
 
                     # Rename destination file
-                    dt_fmt = '%Y-%m-%d-%H%M%S.'
-                    bk_ts = datetime.strftime(datetime.now(), dt_fmt)
-                    bk_dst_path = dst_path.with_name(bk_ts + dst_path.name)
-                    shutil.move(str(dst_path), str(bk_dst_path))
+                    shutil.move(str(dst_path), bk_dst_path)
 
                 # copy2 (and copy) will overwrite existing file:
                 shutil.copy2(src_path, dst_path)
@@ -271,8 +311,6 @@ class ResourceConnection(object):
                 else:
                     ignore_func = None
                 shutil.copytree(src_path, dst_path, ignore=ignore_func)
-
-            print('copying source: {} to dest: {}'.format(src_path, dst_path))
 
     def run_command(self, cmd, cwd=None, block=True):
         """Execute a command on the destination resource.
@@ -287,6 +325,10 @@ class ResourceConnection(object):
             `path` of the destination resource.
 
         """
+
+        if self.dst.is_dropbox:
+            msg = 'Cannot run a command on a Dropbox resource.'
+            raise NotImplementedError(msg)
 
         self.check_conn()
 
