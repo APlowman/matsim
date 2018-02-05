@@ -53,170 +53,53 @@ class Bicrystal(AtomisticStructure):
 
     """
 
-    # Bicrystal keys allowed in the meta attribute:
-    ok_meta = AtomisticStructure.ok_meta + ['boundary_vac']
-
     def __init__(self, as_params=None, maintain_inv_sym=False, reorient=False,
                  boundary_vac=None, relative_shift=None,
-                 wrap=True, non_gb_idx=None, rot_mat=None, state=None):
+                 wrap=True, non_gb_idx=None, rot_mat=None):
 
-        mut_exc_args({'as_params': as_params}, {'state': state})
+        # Call parent constructor
+        super().__init__(**as_params)
 
-        if state:
+        # Set meta info:
+        self.meta = {'supercell_type': ['bicrystal']}
 
-            super().__init__(state=state)
+        # Non-boundary (column) index of `box_csl` and grain arrays
+        gb_idx = [0, 1, 2]
+        gb_idx.remove(non_gb_idx)
 
-            self.maintain_inv_sym = state['maintain_inv_sym']
-            self.n_unit = state['n_unit']
-            self.u_unit = state['u_unit']
-            self.non_boundary_idx = state['non_boundary_idx']
-            self.boundary_idx = state['boundary_idx']
-            self.boundary_vac = state['boundary_vac']
-            self.boundary_vac_type = state['boundary_vac_type']
-            self.relative_shift = state['relative_shift']
-            self.rot_mat = state['rot_mat']
-            self.meta = RestrictedDict(Bicrystal.ok_meta, self.meta)
+        # Boundary normal vector:
+        n = np.cross(self.supercell[:, gb_idx[0]],
+                     self.supercell[:, gb_idx[1]])[:, np.newaxis]
+        n_unit = n / np.linalg.norm(n)
 
-        else:
-            # Call parent constructor
-            super().__init__(**as_params)
+        # Non-boundary supercell unit vector
+        u = self.supercell[:, non_gb_idx][:, None]
+        u_unit = u / np.linalg.norm(u)
 
-            # Set meta info:
-            meta = {'supercell_type': ['bicrystal']}
-            self.meta = RestrictedDict(Bicrystal.ok_meta, meta)
+        # Set instance Bicrystal-specific attributes:
+        self.maintain_inv_sym = maintain_inv_sym
+        self.n_unit = n_unit
+        self.u_unit = u_unit
+        self.non_boundary_idx = non_gb_idx
+        self.boundary_idx = gb_idx
+        self.boundary_vac = 0
+        self.boundary_vac_type = None
+        self.relative_shift = [0, 0]
+        self.rot_mat = rot_mat
 
-            # Non-boundary (column) index of `box_csl` and grain arrays
-            gb_idx = [0, 1, 2]
-            gb_idx.remove(non_gb_idx)
+        # Invoke additional methods:
+        if reorient:
+            self.reorient_to_xy()
 
-            # Boundary normal vector:
-            n = np.cross(self.supercell[:, gb_idx[0]],
-                         self.supercell[:, gb_idx[1]])[:, np.newaxis]
-            n_unit = n / np.linalg.norm(n)
+        if boundary_vac is not None:
+            for bvac in boundary_vac:
+                self.apply_boundary_vac(**bvac)
 
-            # Non-boundary supercell unit vector
-            u = self.supercell[:, non_gb_idx][:, None]
-            u_unit = u / np.linalg.norm(u)
+        if relative_shift is not None:
+            self.apply_relative_shift(**relative_shift)
 
-            # Set instance Bicrystal-specific attributes:
-            self.maintain_inv_sym = maintain_inv_sym
-            self.n_unit = n_unit
-            self.u_unit = u_unit
-            self.non_boundary_idx = non_gb_idx
-            self.boundary_idx = gb_idx
-            self.boundary_vac = 0
-            self.boundary_vac_type = None
-            self.relative_shift = [0, 0]
-            self.rot_mat = rot_mat
-
-            # Invoke additional methods:
-            if reorient:
-                self.reorient_to_xy()
-
-            if boundary_vac is not None:
-                for bvac in boundary_vac:
-                    self.apply_boundary_vac(**bvac)
-
-            if relative_shift is not None:
-                self.apply_relative_shift(**relative_shift)
-
-            if wrap:
-                self.wrap_sites_to_supercell()
-
-    def to_jsonable(self):
-        """Generate a dict representation that can be JSON serialised."""
-
-        state = super().to_jsonable()
-        meta = copy.deepcopy(dict(self.meta))
-
-        if self.meta.get('boundary_vac') is not None:
-
-            boundary_vac_js = []
-            for bvac in self.meta['boundary_vac']:
-                bvac_js = copy.deepcopy(bvac)
-                bvac_js.update({
-                    'atom_sites': {
-                        'x': bvac_js['atom_sites']['x'].tolist(),
-                        'dx': bvac_js['atom_sites']['dx'].tolist(),
-                    }
-                })
-                if bvac.get('lattice_sites'):
-                    bvac_js.update({
-                        'lattice_sites': {
-                            'x': bvac_js['lattice_sites']['x'].tolist(),
-                            'dx': bvac_js['lattice_sites']['dx'].tolist(),
-                        }
-                    })
-                if bvac.get('interstice_sites'):
-                    bvac_js.update({
-                        'interstice_sites': {
-                            'x': bvac_js['interstice_sites']['x'].tolist(),
-                            'dx': bvac_js['interstice_sites']['dx'].tolist(),
-                        }
-                    })
-                boundary_vac_js.append(bvac_js)
-
-            meta['boundary_vac'] = boundary_vac_js
-
-        # Add Bicrystal-specific attributes:
-        state['maintain_inv_sym'] = self.maintain_inv_sym
-        state['n_unit'] = self.n_unit.tolist()
-        state['u_unit'] = self.u_unit.tolist()
-        state['non_boundary_idx'] = self.non_boundary_idx
-        state['boundary_idx'] = self.boundary_idx
-        state['boundary_vac'] = self.boundary_vac
-        state['boundary_vac_type'] = self.boundary_vac_type
-        state['relative_shift'] = self.relative_shift
-        state['rot_mat'] = self.rot_mat.tolist()
-        state['meta'] = meta
-
-        return state
-
-    @classmethod
-    def from_jsonable(cls, state):
-
-        meta = state['meta']
-
-        state = super().from_jsonable(state)
-
-        if meta.get('boundary_vac') is not None:
-
-            boundary_vac_ntv = []
-            for bvac in meta['boundary_vac']:
-
-                bvac_ntv = copy.deepcopy(bvac)
-                bvac_ntv.update({
-                    'atom_sites': {
-                        'x': np.array(bvac['atom_sites']['x']),
-                        'dx': np.array(bvac['atom_sites']['dx']),
-                    },
-                })
-                if bvac.get('lattice_sites'):
-                    bvac_ntv.update({
-                        'lattice_sites': {
-                            'x': np.array(bvac['lattice_sites']['x']),
-                            'dx': np.array(bvac['lattice_sites']['dx']),
-                        }
-                    })
-                if bvac.get('interstice_sites'):
-                    bvac_ntv.update({
-                        'interstice_sites': {
-                            'x': np.array(bvac['interstice_sites']['x']),
-                            'dx': np.array(bvac['interstice_sites']['dx']),
-                        }
-                    })
-                boundary_vac_ntv.append(bvac_ntv)
-
-            meta['boundary_vac'] = boundary_vac_ntv
-
-        state.update({
-            'n_unit': np.array(state['n_unit']),
-            'u_unit': np.array(state['u_unit']),
-            'rot_mat': np.array(state['rot_mat']),
-            'meta': meta,
-        })
-
-        return cls(state=state)
+        if wrap:
+            self.wrap_sites_to_supercell()
 
     @property
     def bicrystal_thickness(self):

@@ -12,6 +12,9 @@ import time
 from datetime import datetime
 
 import numpy as np
+import jsonpickle
+import jsonpickle.ext.numpy as jsonpickle_numpy
+jsonpickle_numpy.register_handlers()
 
 from matsim import (JS_TEMPLATE_DIR, utils, parse_opt, CONFIG, DB_CONFIG,
                     database, OPTSPEC)
@@ -255,7 +258,7 @@ class SimGroup(object):
     """
 
     # Default path formatting options:
-    path_options_def = {
+    path_options_default = {
         'parallel_sims_join': '_+_',
         'sim_numbers': True,
         'sim_numbers_join': '__',
@@ -266,213 +269,39 @@ class SimGroup(object):
         'human_id': '%Y-%m-%d-%H%M_%%r%%r%%r%%r%%r',
     }
 
-    def __init__(self, opts=None, opts_raw=None, seq_defn=None, state=None):
-        """Initialise a SimGroup object.
+    def __init__(self, base_sim_options, run_options, path_options, sim_updates,
+                 sequences, human_id, name, sims, db_id=None):
+        """Initialise a SimGroup object."""
 
-        If generating a new SimGroup, use parameters `opts` and
-        `seq_defn`. If loading from a saved state (e.g. from JSON), use
-        parameter `state`.
+        self.base_sim_options = base_sim_options
+        self.run_options = run_options
+        self.path_options = path_options
+        self.sim_updates = sim_updates
+        self.sequences = sequences
+        self.human_id = human_id
+        self.name = name
+        self.sims = sims
 
-        """
+        self.software_name = run_options['software_name']
+        self.stage = run_options.pop('stage')
+        self.scratch = run_options.pop('scratch')
+        self.archive = run_options.pop('archive')
 
-        mut_exc_args(
-            {'opts': opts, 'opts_raw': opts_raw, 'seq_defn': seq_defn},
-            {'state': state}
-        )
-
-        if state:
-            self.sequences = state['sequences']
-            self.sim_updates = state['sim_updates']
-            self.sims = state['sims']
-            self.software_name = state['software_name']
-            self.path_options = state['path_options']
-            self.options_unparsed = state['options_unparsed']
-            self.options = state['options']
-            self.human_id = state['human_id']
-            self.name = state['job_name']
-            self.db_id = state['db_id']
-            self.stage = state['stage']
-            self.scratch = state['scratch']
-            self.archive = state['archive']
-            self.run_opt = state['run_opt']
-
-        else:
-
-            sequences = opts.pop('sequences')
-            run_opt = opts.pop('run')
-            path_options = opts.pop('path_options', {})
-
-            self.options_unparsed = opts_raw
-            self.options = opts
-            self.sequences = [SimSequence(i, seq_defn) for i in sequences]
-            self.sim_updates = self._get_sim_updates()
-            self.sims = None
-
-            # Process run group options:
-            self.software_name = None
-
-            path_options = {**SimGroup.path_options_def, **path_options}
-            sub_dirs = [utils.parse_times(i)[0]
-                        for i in path_options['sub_dirs']]
-            hid, hid_num = utils.parse_times(path_options['human_id'])
-            path_options.update({'sub_dirs': sub_dirs})
-
-            self.path_options = path_options
-            self.human_id = hid
-            self.name = 'j_' + hid_num
-            self.db_id = None
-
-            add_path = self.path_options['sub_dirs'] + [self.human_id]
-            self.stage = Stage(run_opt['stage'], add_path)
-            self.scratch = Scratch(run_opt['scratch'], add_path)
-            self.archive = Archive(run_opt['archive'], add_path)
-            self.run_opt = self._parse_run_group_opt(run_opt)
-
-    def _parse_run_group_opt(self, run_opt):
-
-        # TODO: raise exception if sge.jobarray False and len(sim_idx) > 1
-
-        for rg_idx, _ in enumerate(run_opt['groups']):
-
-            run_group = run_opt['groups'][rg_idx]
-
-            # Load software entry
-            soft_inst_name = run_group['software_instance']
-            soft_inst = database.get_software_instance_by_name(soft_inst_name)
-            software_name = soft_inst['software_name']
-
-            scratch_ids = database.get_software_instance_ok_scratch(
-                soft_inst_name)
-
-            if self.scratch.scratch_id not in scratch_ids:
-                msg = ('Software instance "{}" is not allowed on scratch "{}"')
-                raise ValueError(msg.format(soft_inst_name, self.scratch.name))
-
-            if self.software_name is None:
-                self.software_name = software_name
-
-            elif self.software_name != software_name:
-                raise ValueError('All run groups must use the same software '
-                                 '(name)!')
-
-            # Check valid num cores specified
-            ncores = run_group['num_cores']
-            if not soft_inst['min_cores'] <= ncores <= soft_inst['max_cores']:
-                msg = ('{} core(s) is not supported on the specified '
-                       'software instance.')
-                raise ValueError(msg.format(ncores))
-
-            run_group['software_instance'] = soft_inst
-
-            rg_sim_idx = run_group['sim_idx']
-            sim_idx_msg = ('Run group `sim_idx` must be either "all" or a '
-                           'list of integers that index the sims.')
-
-            if rg_sim_idx == 'all':
-                run_group['sim_idx'] = list(range(self.num_sims))
-
-            elif isinstance(rg_sim_idx, list):
-                if min(rg_sim_idx) < 0 or max(rg_sim_idx) > (self.num_sims - 1):
-                    raise ValueError(sim_idx_msg)
-
-            else:
-                raise ValueError(sim_idx_msg)
-
-        return run_opt
-
-    def _get_merged_updates(self):
-        """Merge updates from 'parallel' sequences (those with the same `nest_idx`)"""
-
-        # Get the updates for each sequence:
-        seq_upds = []
-        for seq in self.sequences:
-            seq_upds.append(seq.updates)
-
-        # Merge parallel sequences (those with same `nest_idx`):
-        seq_upds_mergd = {}
-        for idx, seq_i in enumerate(self.sequences):
-            nest_idx = seq_i.nest_idx
-
-            if nest_idx in seq_upds_mergd:
-                mergd = merge(seq_upds_mergd[nest_idx], seq_upds[idx])
-                seq_upds_mergd[nest_idx] = mergd
-
-            else:
-                seq_upds_mergd.update({
-                    nest_idx: seq_upds[idx]
-                })
-
-        # Sort by `nest_idx`
-        merged_updates = [val for _, val in sorted(seq_upds_mergd.items())]
-        return merged_updates
-
-    def _get_sim_updates(self):
-
-        grp_upd = nest(*self._get_merged_updates())
-
-        grp_upd_flat = []
-        for upd_lst in grp_upd:
-            upd_lst_flat = [j for i in upd_lst for j in i]
-            grp_upd_flat.append(upd_lst_flat)
-
-        return grp_upd_flat
+        self.db_id = db_id
 
     @property
     def num_sims(self):
         """Return the number of simulations in this group."""
         return len(self.sim_updates)
 
-    def _apply_sim_update(self, base_dict, update):
-        # TODO remove this logic from SimGroup
-        """Apply a BaseUpdate namedtuple to a dict.
-
-        Parameters
-        ----------
-        base_dict : dict
-            dict to which an update is applied.
-        update : BaseUpdate
-            BaseUpdate namedtuple with fields: `address`, `val`, `val_seq_type`
-            and `mode`.
-
-        """
-
-        if update.mode == 'replace':
-            upd_val = update.val
-
-        elif update.mode == 'append':
-            upd_val = get_recursive(base_dict, update.address, [])
-            upd_val.append(update.val)
-
-        upd_dict = set_nested_dict(update.address, upd_val)
-        new_base_dict = update_dict(base_dict, upd_dict)
-
-        return new_base_dict
-
-    def get_sim_options(self, sim_idx=None):
-        """Get options parameterising a given simulation belonging to this group."""
-
-        sim_opt = copy.deepcopy(self.options)
-        if sim_idx is not None:
-            for upd in self.sim_updates[sim_idx]:
-                sim_opt = self._apply_sim_update(sim_opt, upd)
-
-        return sim_opt
-
     @property
     def sim_class(self):
         """Get the Simulation class associated with this group."""
         return SOFTWARE_CLASS_MAP[self.software_name]
 
-    def get_sim(self, sim_idx=None):
-        """Get a Simulation object belonging to this group."""
-
-        sim_opt = self.get_sim_options(sim_idx)
-        sim = self.sim_class(sim_opt)
-
-        return sim
-
     @property
     def sequence_lengths(self):
+        # TODO remove this logic from SimGroup
 
         all_nest = [i.nest_idx for i in self.sequences]
         _, uniq_idx = np.unique(all_nest, return_index=True)
@@ -492,45 +321,7 @@ class SimGroup(object):
 
         return ind[::-1]
 
-    def to_jsonable(self):
-        """Generate a dict representation that can be JSON serialised."""
-
-        # JSONify sim_updates
-        sim_updates_js = []
-        for i in self.sim_updates:
-            i_js = []
-            for base_update in i:
-
-                base_upd_js = {
-                    'address': base_update.address,
-                    'val_seq_type': base_update.val_seq_type,
-                    'mode': base_update.mode,
-                }
-
-                base_upd_val = base_update.val
-                if base_update.val_seq_type == 'array':
-                    base_upd_val = base_upd_val.tolist()
-
-                base_upd_js.update({
-                    'val': base_upd_val
-                })
-
-                i_js.append(base_upd_js)
-
-            sim_updates_js.append(i_js)
-
-        ret = {
-            'sequences': [i.to_jsonable() for i in self.sequences],
-            'sim_updates': sim_updates_js,
-            'sims': [i.to_jsonable() for i in self.sims],
-            'options_unparsed': self.options_unparsed,
-            'human_id': self.human_id,
-            'db_id': self.db_id,
-        }
-        return ret
-
     def save_state(self, resource_type, path=None):
-        """Write a JSON file representing this SimGroup object."""
 
         json_fn = 'sim_group.json'
 
@@ -543,13 +334,14 @@ class SimGroup(object):
         if path:
             json_path = json_path.with_name(json_path.name + '.' + path)
 
-        sg_js = self.to_jsonable()
+        jsonpickle.set_encoder_options('json', sort_keys=True, indent=4)
+        state = jsonpickle.encode(self)
 
         with json_path.open('w') as sim_group_fp:
-            json.dump(sg_js, sim_group_fp, indent=2)
+            sim_group_fp.write(state)
 
     @classmethod
-    def load_state(cls, human_id, resource_type, seq_defn):
+    def load_state(cls, human_id, resource_type):
         """Load from database/JSON file representing a SimGroup object.
 
         Parameters
@@ -585,96 +377,19 @@ class SimGroup(object):
         elif resource_type == 'archive':
             json_path = archive.path.joinpath(json_fn)
 
-        state = sg_params
-        state.update({
-            'stage': stage,
-            'scratch': scratch,
-            'archive': archive,
-            'job_name': state.pop('name'),
-        })
-
-        sg_id_db = state['db_id']
-
-        id_err = ('Sim group ID on database ({}) does not match that in '
-                  'the JSON file ({}).')
-
         with open(json_path, 'r') as sim_group_fp:
 
-            json_data = json.load(sim_group_fp)
-            sg_id_json = json_data['db_id']
+            json_data = sim_group_fp.read()
+            state = jsonpickle.decode(json_data)
 
-            if sg_id_db != sg_id_json:
-                raise ValueError(id_err.format(sg_id_db, sg_id_json))
-
-            state.update({**json_data})
-
-        # Load sim updates:
-        sim_updates_ntv = []
-        for i in state['sim_updates']:
-
-            i_js = []
-
-            for base_update in i:
-
-                base_upd_val = base_update['val']
-
-                if base_update['val_seq_type'] == 'array':
-                    base_upd_val = np.array(base_upd_val)
-
-                elif base_update['val_seq_type'] == 'tuple':
-                    base_upd_val = tuple(base_upd_val)
-
-                base_upd_ntv = BaseUpdate(
-                    base_update['address'],
-                    base_upd_val,
-                    base_update['val_seq_type'],
-                    base_update['mode'],
-                )
-
-                i_js.append(base_upd_ntv)
-
-            sim_updates_ntv.append(i_js)
-
-        # Get correct Simulation class from software method:
-        sim_class = SOFTWARE_CLASS_MAP[state['software_name']]
-        sims_native = [sim_class.from_jsonable(i) for i in state['sims']]
-
-        opts_unparsed = state['options_unparsed']
-        opts_parsed = parse_opt(opts_unparsed, OPTSPEC['makesims'])
-
-        opts_parsed.pop('sequences')
-        opts_parsed.pop('run')
-        opts_parsed.pop('path_options', {})
-
-        seqs = [SimSequence.from_jsonable(i, seq_defn)
-                for i in state['sequences']]
-
-        state.update({
-            'sequences': seqs,
-            'sim_updates': sim_updates_ntv,
-            'sims': sims_native,
-            'options_unparsed': opts_unparsed,
-            'options': opts_parsed,
-            'human_id': state['human_id'],
-            'db_id': state['db_id'],
-        })
-
-        sim_group = cls(state=state)
-
-        # Finish restoring the state of the simulations
-        for sim_idx in range(sim_group.num_sims):
-            sim_opt = sim_group.get_sim_options(sim_idx)
-            sim_opt.pop('structure')
-            sim_group.sims[sim_idx].options = sim_opt
-
-        return sim_group
+        return state
 
     def write_initial_runs(self):
         """Populate the sims attribute and write input files on stage."""
 
-        if self.sims is not None:
-            raise ValueError('Simulations have already been generated for this'
-                             ' SimGroup object.')
+        # if self.sims is not None:
+        #     raise ValueError('Simulations have already been generated for this'
+        #                      ' SimGroup object.')
 
         # Check this machine is the stage machine
         if self.stage.machine_name != CONFIG['machine_name']:
@@ -685,15 +400,12 @@ class SimGroup(object):
         scratch_path = self.scratch.path
         stage_path.mkdir(parents=True)
 
+        sim_params = self.base_sim_options['params'][self.software_name]
         self.sim_class.copy_reference_data(
-            self.options['params'][self.software_name], stage_path, scratch_path
-        )
-
-        # Generate sims:
-        self.sims = [self.get_sim(i) for i in range(self.num_sims)]
+            sim_params, stage_path, scratch_path)
 
         # Loop through each requested run group:
-        for rg_idx, run_group in enumerate(self.run_opt['groups']):
+        for rg_idx, run_group in enumerate(self.run_options['groups']):
 
             # Loop over each simulation in this run group
             sim_paths_stage = []
@@ -710,11 +422,7 @@ class SimGroup(object):
                 # Write simulation input files:
                 self.sims[sim_idx].write_input_files(str(sm_pth_stg))
                 self.sims[sim_idx].runs.append({
-                    'run_group_id': rg_idx,
-                    'run_state': 'on_stage',
-                    'software_instance_id': soft_inst['id'],
                     'result': None,
-                    'num_cores': run_group['num_cores'],
                 })
 
             # Write supporting files: jobscript, dirlist, options records
@@ -767,7 +475,7 @@ class SimGroup(object):
         ask_sub_idx = []
         no_sub_idx = []
 
-        for i_idx, i in enumerate(self.run_opt['groups']):
+        for i_idx, i in enumerate(self.run_options['groups']):
 
             auto_sub = i.get('auto_submit', 'ask')
             if auto_sub == 'ask':
@@ -810,10 +518,10 @@ class SimGroup(object):
         sub_msg = ('Submitting run group: {}')
         for rg_idx in run_group_idx:
 
-            run_group = self.run_opt['groups'][rg_idx]
+            run_group = self.run_options['groups'][rg_idx]
 
             # Get ID in run_group table:
-            rg_id = run_group['id']
+            rg_id = run_group['db_id']
 
             submit_time = database.get_run_group(rg_id)['submit_time']
             if submit_time:
@@ -938,27 +646,10 @@ class SimGroup(object):
                 else:
                     process.main(self, rg_idx)
 
-    def add_to_db(self):
-        """Connect to database, add a sim_group entry, with this human_id and
-        absolute scratch path, get a db_id to set."""
-
-        db_ret = database.add_sim_group(self)
-        for rg_idx in range(len(self.run_opt['groups'])):
-
-            run_group = self.run_opt['groups'][rg_idx]
-            rg_ids = db_ret['run_group_ids'][rg_idx]
-
-            run_group.update({
-                'id': rg_ids[0],
-                'sge_id': rg_ids[1]
-            })
-
-        self.db_id = db_ret['sim_group_id']
-
     def copy_to_scratch(self):
         """Copy group from Stage to Scratch."""
 
-        copy_scratch = self.run_opt['copy_to_scratch']
+        copy_scratch = self.run_options['copy_to_scratch']
         do_copy = False
 
         if copy_scratch == 'ask':
@@ -1030,20 +721,7 @@ class SimGroup(object):
 
         # Need to check current machine is Scratch machine (config.yml)
 
-    def get_path(self, resource):
-        """Get the absolute path of the directory representing this SimGroup,
-        on Stage, Scratch or Archive.
-        """
-        if resource == 'stage':
-            resource_path = self.stage.path
-        elif resource == 'scratch':
-            resource_path = self.scratch.path
-        elif resource == 'archive':
-            resource_path = self.archive.path
-
-        return [resource_path] + self.path_options['sub_dirs'] + [self.hid]
-
-    def get_sim_path(self, sim_idx, ):
+    def get_sim_path(self, sim_idx):
         """Get the path to a simulation directory.
 
         Parameters
@@ -1052,9 +730,7 @@ class SimGroup(object):
             Index of simulation within the group.
 
         """
-
-        sim_opt = self.get_sim_options(sim_idx)
-        seq_id = sim_opt['sequence_id']
+        seq_id = self.sims[sim_idx].options['sequence_id']
 
         path = []
         nest_idx = seq_id['nest_idx'][0] - 1

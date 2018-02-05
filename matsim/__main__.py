@@ -20,13 +20,13 @@ def main(args=sys.argv):
             ms_opts_raw = yaml.safe_load(ms_opts_fp)
         ms_opts = parse_opt(ms_opts_raw, OPTSPEC['makesims'])
 
-        makesims.main(ms_opts, ms_opts_raw, SEQ_DEFN)
+        makesims.main(ms_opts)
 
     elif args[1] == 'load':
 
         from matsim.simulation.simgroup import SimGroup
 
-        sim_group = SimGroup.load_state(args[2], 'stage', SEQ_DEFN)
+        sim_group = SimGroup.load_state(args[2], 'stage')
         prt(sim_group, 'sim_group')
 
         print('loaded, now saving...')

@@ -13,21 +13,11 @@ from matsim.atomistic.structure.bicrystal import Bicrystal
 class AtomisticSimulation(Simulation):
     """Class to represent an atomistic simulation."""
 
-    def __init__(self, options=None, state=None):
+    def __init__(self, options):
 
-        mut_exc_args(
-            {'options': options},
-            {'state': state})
-
-        if state:
-            self.options = None
-            self.structure = state['structure']
-            self.runs = state['runs']
-
-        else:
-            self.options = options
-            self.structure = get_structure(options)
-            self.runs = []
+        self.structure = get_structure(options)
+        self.options = options
+        self.runs = []
 
     @classmethod
     def copy_reference_data(cls, sim_params, stage_path, scratch_path):

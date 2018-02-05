@@ -64,29 +64,6 @@ class Crystal(object):
 
         self.translate(origin)
 
-    def to_jsonable(self):
-        """Generate a dict representation which can be serialised to JSON."""
-
-        ret = {
-            'origin': self.origin,
-            'atom_sites': self.atom_sites.tolist(),
-            'atom_labels': site_labs_to_jsonable(self.atom_labels),
-        }
-
-        if self.lattice_sites:
-            ret.update({
-                'lattice_sites': self.lattice_sites.tolist(),
-                'lattice_labels': site_labs_to_jsonable(self.lattice_labels),
-            })
-
-        if self.interstice_sites:
-            ret.update({
-                'interstice_sites': self.interstice_sites.tolist(),
-                'interstice_labels': site_labs_to_jsonable(self.interstice_labels)
-            })
-
-        return ret
-
     @property
     def atom_sites_frac(self):
         return np.dot(np.linalg.inv(self.box_vecs.vecs), self.atom_sites)
@@ -228,7 +205,7 @@ class CrystalBox(Crystal):
         return (sts_std_in, sts_box_in, labels_in)
 
     def __init__(self, crystal_structure=None, box_vecs=None, edge_conditions=None,
-                 origin=None, state=None):
+                 origin=None):
         """
         Fill a parallelopiped with atoms belonging to a given crystal
         structure.
@@ -270,133 +247,68 @@ class CrystalBox(Crystal):
 
         """
 
-        mut_exc_args(
-            {'crystal_structure': crystal_structure, 'box_vecs': box_vecs},
-            {'state': state}
-        )
+        if edge_conditions is None:
+            edge_conditions = ['10', '10', '10']
 
-        if state:
+        # Convenience:
+        cs = crystal_structure
+        lat_vecs = cs.bravais_lattice.vecs
 
-            self.lattice_sites = state['lattice_sites']
-            self.lattice_labels = state['lattice_labels']
-            self.atom_sites = state['atom_sites']
-            self.atom_labels = state['atom_labels']
-            self.interstice_sites = state['interstice_sites']
-            self.interstice_labels = state['interstice_labels']
-            self.bounding_box = state['bounding_box']
-            self.crystal_structure = state['crystal_structure']
-            self.box_vecs = state['box_vecs']
-            self.origin = state['origin']
+        # Get the bounding box of box_vecs whose vectors are parallel to the
+        # crystal lattice. Use padding to catch edge atoms which aren't on
+        # lattice sites.
+        bounding_box = geometry.get_bounding_box(
+            box_vecs, bound_vecs=lat_vecs, padding=1)
+        box_vecs_inv = np.linalg.inv(box_vecs)
 
-        else:
+        bb = bounding_box['bound_box'][0]
+        bb_org = bounding_box['bound_box_origin'][:, 0]
+        bb_bv = bounding_box['bound_box_bv'][:, 0]
+        bb_org_bv = bounding_box['bound_box_origin_bv'][:, 0]
 
-            if edge_conditions is None:
-                edge_conditions = ['10', '10', '10']
+        # Get all lattice sites within the bounding box, as column vectors:
+        grid = [range(bb_org_bv[i], bb_org_bv[i] + bb_bv[i] + 1)
+                for i in [0, 1, 2]]
+        unit_cell_origins = np.vstack(np.meshgrid(*grid)).reshape((3, -1))
 
-            # Convenience:
-            cs = crystal_structure
-            lat_vecs = cs.bravais_lattice.vecs
+        com_params = [
+            unit_cell_origins,
+            lat_vecs,
+            box_vecs_inv,
+            edge_conditions,
+        ]
 
-            # Get the bounding box of box_vecs whose vectors are parallel to the
-            # crystal lattice. Use padding to catch edge atoms which aren't on
-            # lattice sites.
-            bounding_box = geometry.get_bounding_box(
-                box_vecs, bound_vecs=lat_vecs, padding=1)
-            box_vecs_inv = np.linalg.inv(box_vecs)
+        (lat_std, lat_box,
+            lat_labs) = self._find_valid_sites(cs.lattice_sites_frac,
+                                               cs.lattice_labels, *com_params)
 
-            bb = bounding_box['bound_box'][0]
-            bb_org = bounding_box['bound_box_origin'][:, 0]
-            bb_bv = bounding_box['bound_box_bv'][:, 0]
-            bb_org_bv = bounding_box['bound_box_origin_bv'][:, 0]
+        (at_std, at_box,
+            at_labs) = self._find_valid_sites(cs.atom_sites_frac,
+                                              cs.atom_labels, *com_params)
 
-            # Get all lattice sites within the bounding box, as column vectors:
-            grid = [range(bb_org_bv[i], bb_org_bv[i] + bb_bv[i] + 1)
-                    for i in [0, 1, 2]]
-            unit_cell_origins = np.vstack(np.meshgrid(*grid)).reshape((3, -1))
+        int_std, int_box, int_labs = None, None, None
+        if cs.interstice_sites is not None:
+            (int_std, int_box,
+                int_labs) = self._find_valid_sites(cs.interstice_sites_frac,
+                                                   cs.interstice_labels,
+                                                   *com_params)
 
-            com_params = [
-                unit_cell_origins,
-                lat_vecs,
-                box_vecs_inv,
-                edge_conditions,
-            ]
+        self.lattice_sites = lat_std
+        self.lattice_labels = lat_labs
 
-            (lat_std, lat_box,
-             lat_labs) = self._find_valid_sites(cs.lattice_sites_frac,
-                                                cs.lattice_labels, *com_params)
+        self.atom_sites = at_std
+        self.atom_labels = at_labs
 
-            (at_std, at_box,
-             at_labs) = self._find_valid_sites(cs.atom_sites_frac,
-                                               cs.atom_labels, *com_params)
+        self.interstice_sites = int_std
+        self.interstice_labels = int_labs
 
-            int_std, int_box, int_labs = None, None, None
-            if cs.interstice_sites is not None:
-                (int_std, int_box,
-                 int_labs) = self._find_valid_sites(cs.interstice_sites_frac,
-                                                    cs.interstice_labels,
-                                                    *com_params)
+        self.bounding_box = bounding_box
+        self.crystal_structure = cs
+        self.box_vecs = box_vecs
+        self.origin = np.zeros((3, 1))
 
-            self.lattice_sites = lat_std
-            self.lattice_labels = lat_labs
-
-            self.atom_sites = at_std
-            self.atom_labels = at_labs
-
-            self.interstice_sites = int_std
-            self.interstice_labels = int_labs
-
-            self.bounding_box = bounding_box
-            self.crystal_structure = cs
-            self.box_vecs = box_vecs
-            self.origin = np.zeros((3, 1))
-
-            if origin is not None:
-                self.translate(origin)
-
-    def to_jsonable(self):
-
-        ret = super().to_jsonable()
-
-        # Jsonify bounding box which has form dict of {str: ndarray}
-        bb_js = {key: val.tolist() for key, val in self.bounding_box.items()}
-
-        # Add bounding box, crystal structure, box vecs:
-        ret.update({
-            'bounding_box': bb_js,
-            'box_vecs': self.box_vecs.tolist(),
-            'crystal_structure': self.crystal_structure.to_jsonable(),
-        })
-
-        return ret
-
-    @classmethod
-    def from_jsonable(cls, state):
-        """Instantiate from a JSONable dict."""
-
-        bb_native = {key: np.array(val)
-                     for key, val in state['bounding_box'].items()}
-
-        state.update({
-            'atom_sites': np.array(state['atom_sites']),
-            'bounding_box': bb_native,
-            'crystal_structure': state['crystal_structure'].from_jsonable(),
-            'box_vecs': np.array(state['box_vecs']),
-            'origin': np.array(state['origin']),
-        })
-
-        if state['interstice_sites']:
-            state.update({
-                'interstice_sites': np.array(state['interstice_sites']),
-                'interstice_labels': site_labs_from_jsonable(state['interstice_labels']),
-            })
-
-        if state['lattice_sites']:
-            state.update({
-                'lattice_sites': np.array(state['lattice_sites']),
-                'lattice_labels': site_labs_from_jsonable(state['lattice_labels']),
-            })
-
-        return cls(state=state)
+        if origin is not None:
+            self.translate(origin)
 
     def visualise(self, **kwargs):
         struct_visualise(self, **kwargs)
@@ -551,7 +463,7 @@ class CrystalStructure(object):
 
                 utils.check_indices(lab_val[0], lab_val[1])
 
-    def __init__(self, bravais_lattice=None, motif=None, state=None):
+    def __init__(self, bravais_lattice=None, motif=None):
         """
         Instantiate a CrystalStructure object. Use parameters `bravais_lattice`
         and `motif` if generating a new CrystalStructure, or parameter `state`
@@ -559,149 +471,73 @@ class CrystalStructure(object):
 
         """
 
-        mut_exc_args({'bravais_lattice': bravais_lattice,
-                      'motif': motif},
-                     {'state': state})
+        self._validate_motif(motif)
 
-        if state:
-            self.bravais_lattice = state['bravais_lattice']
-            self.motif = state['motif']
-            self.lattice_sites = state['lattice_sites']
-            self.lattice_sites_frac = state['lattice_sites_frac']
-            self.lattice_labels = state['lattice_labels']
-            self.interstice_sites = state['interstice_sites']
-            self.interstice_sites_frac = state['interstice_sites_frac']
-            self.atom_sites = state['atom_sites']
-            self.atom_labels = state['atom_labels']
+        # Set some attributes directly from BravaisLattice:
+        lat_sites_frac = bravais_lattice.lattice_sites_frac
+        num_lat_sites = lat_sites_frac.shape[1]
+        self.bravais_lattice = copy.deepcopy(bravais_lattice)
+        self.motif = copy.deepcopy(motif)
+        self.lattice_sites = bravais_lattice.lattice_sites
+        self.lattice_sites_frac = lat_sites_frac
 
-        else:
+        # Set labels for lattice sites:
+        self.lattice_labels = {}
 
-            self._validate_motif(motif)
+        # Set atom sites: add atomic motif to each lattice site to get
+        motif_rs = motif['atoms']['sites'].T.reshape((-1, 3, 1))
 
-            # Set some attributes directly from BravaisLattice:
-            lat_sites_frac = bravais_lattice.lattice_sites_frac
-            num_lat_sites = lat_sites_frac.shape[1]
-            self.bravais_lattice = bravais_lattice
-            self.motif = motif
-            self.lattice_sites = bravais_lattice.lattice_sites
-            self.lattice_sites_frac = lat_sites_frac
+        atom_sites_frac = np.concatenate(lat_sites_frac + motif_rs, axis=1)
+        atom_sites_std = np.dot(bravais_lattice.vecs, atom_sites_frac)
+        self.atom_sites = atom_sites_std
 
-            # Set labels for lattice sites:
-            self.lattice_labels = {}
+        # Set labels for atom sites:
+        mt_atm_labs = copy.deepcopy(motif['atoms']['labels'])
+        self.atom_labels = {}
+        for lab_name, valsidx in mt_atm_labs.items():
 
-            # Set atom sites: add atomic motif to each lattice site to get
-            motif_rs = motif['atoms']['sites'].T.reshape((-1, 3, 1))
+            lab_vals = np.array(valsidx[0])
+            lab_idx = np.array(valsidx[1])
+            lab_idx_rp = np.repeat(lab_idx, num_lat_sites)
+            self.atom_labels.update({lab_name: (lab_vals, lab_idx_rp)})
 
-            atom_sites_frac = np.concatenate(lat_sites_frac + motif_rs, axis=1)
-            atom_sites_std = np.dot(bravais_lattice.vecs, atom_sites_frac)
-            self.atom_sites = atom_sites_std
+        # Generate a special atom label which tells us, for motifs with more
+        # than one atom of the same species, which within-species motif atom
+        # number a given atom maps to:
 
-            # Set labels for atom sites:
-            mt_atm_labs = motif['atoms']['labels']
-            self.atom_labels = {}
-            for lab_name, valsidx in mt_atm_labs.items():
+        motif_species = np.array(mt_atm_labs['species'][0])
+        motif_species_idx = np.array(mt_atm_labs['species'][1])
+        species_count = np.ones(len(motif_species_idx)) * np.nan
+        for i in range(len(motif_species)):
+            where_sp_idx = np.where(motif_species_idx == i)[0]
+            species_count[where_sp_idx] = np.arange(len(where_sp_idx))
 
-                lab_vals = np.array(valsidx[0])
-                lab_idx = np.array(valsidx[1])
-                lab_idx_rp = np.repeat(lab_idx, num_lat_sites)
-                self.atom_labels.update({lab_name: (lab_vals, lab_idx_rp)})
+        species_count = species_count.astype(int)
+        species_count = np.tile(species_count.astype(int), num_lat_sites)
 
-            # Generate a special atom label which tells us, for motifs with more
-            # than one atom of the same species, which within-species motif atom
-            # number a given atom maps to:
-
-            motif_species = np.array(mt_atm_labs['species'][0])
-            motif_species_idx = np.array(mt_atm_labs['species'][1])
-            species_count = np.ones(len(motif_species_idx)) * np.nan
-            for i in range(len(motif_species)):
-                where_sp_idx = np.where(motif_species_idx == i)[0]
-                species_count[where_sp_idx] = np.arange(len(where_sp_idx))
-
-            species_count = species_count.astype(int)
-            species_count = np.tile(species_count.astype(int), num_lat_sites)
-
-            self.atom_labels.update({
-                'species_count': (species_count, np.arange(len(species_count)))
-            })
-
-            # Set interstice sites:
-            interstice_sites = None
-            interstice_sites_frac = None
-            interstice_labels = None
-
-            if motif.get('interstices') is not None:
-                int_sites = motif['interstices']['sites']
-                int_sites_labs = {}
-                for lab_name, valsidx in motif['interstices']['labels'].items():
-                    int_sites_labs.update({
-                        lab_name: (np.array(valsidx[0]), np.array(valsidx[1]))
-                    })
-                interstice_sites_frac = int_sites
-                interstice_sites = np.dot(bravais_lattice.vecs, int_sites)
-                interstice_labels = int_sites_labs
-
-            self.interstice_sites = interstice_sites
-            self.interstice_sites_frac = interstice_sites_frac
-            self.interstice_labels = interstice_labels
-
-            # prt(self.motif, 'self.motif')
-
-    @classmethod
-    def from_jsonable(cls, state):
-        """Instantiate CrystalStructure from a JSONable dict."""
-
-        motif_ntv = {}
-        for motkey, motval in state['motif'].items():
-            motval_ntv = copy.deepcopy(motval)
-            motval_ntv['sites'] = np.array(motval_ntv['sites'])
-            motval_ntv['labels'] = site_labs_from_jsonable(
-                motval_ntv['labels'])
-            motif_ntv.update({motkey: motval_ntv})
-
-        state.update({
-            'bravais_lattice': BravaisLattice.from_jsonable(state['bravais_lattice']),
-            'motif': motif_ntv,
-            'lattice_sites': np.array(state['lattice_sites']),
-            'lattice_sites_frac': np.array(state['lattice_sites_frac']),
-            'lattice_labels': state['lattice_labels'],
-            'interstice_sites': state['interstice_sites'],
-            'interstice_sites_frac': state['interstice_sites_frac'],
-            'atom_sites': np.array(state['atom_sites']),
-            'atom_labels': site_labs_from_jsonable(state['atom_labels']),
+        self.atom_labels.update({
+            'species_count': (species_count, np.arange(len(species_count)))
         })
 
-        return cls(state=state)
+        # Set interstice sites:
+        interstice_sites = None
+        interstice_sites_frac = None
+        interstice_labels = None
 
-    def to_jsonable(self):
-        """Generate a dict representation that can be JSON serialised."""
+        if motif.get('interstices') is not None:
+            int_sites = copy.deepcopy(motif['interstices']['sites'])
+            int_sites_labs = {}
+            for lab_name, valsidx in motif['interstices']['labels'].items():
+                int_sites_labs.update({
+                    lab_name: (np.array(valsidx[0]), np.array(valsidx[1]))
+                })
+            interstice_sites_frac = int_sites
+            interstice_sites = np.dot(bravais_lattice.vecs, int_sites)
+            interstice_labels = int_sites_labs
 
-        # JSONify motif which has form dict of
-        # {str: dict of {
-        #   "sites": ndarray,
-        #   "labels": dict of {str : tuple of (ndarray, ndarray) }}}
-
-        motif_js = {}
-        for motkey, motval in self.motif.items():
-
-            motval_js = copy.deepcopy(motval)
-            motval_js['sites'] = motval_js['sites'].tolist()
-            motval_js['labels'] = site_labs_to_jsonable(motval_js['labels'])
-
-            motif_js.update({motkey: motval_js})
-
-        ret = {
-            'bravais_lattice': self.bravais_lattice.to_jsonable(),
-            'motif': motif_js,
-            'lattice_sites': self.lattice_sites.tolist(),
-            'lattice_sites_frac': self.lattice_sites_frac.tolist(),
-            'lattice_labels': self.lattice_labels,
-            'interstice_sites': self.interstice_sites,
-            'interstice_sites_frac': self.interstice_sites_frac,
-            'atom_sites': self.atom_sites.tolist(),
-            'atom_labels': site_labs_to_jsonable(self.atom_labels),
-        }
-
-        return ret
+        self.interstice_sites = interstice_sites
+        self.interstice_sites_frac = interstice_sites_frac
+        self.interstice_labels = interstice_labels
 
     @property
     def atom_sites_frac(self):

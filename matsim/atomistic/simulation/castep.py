@@ -10,12 +10,10 @@ from matsim.atomistic.simulation.sim import AtomisticSimulation
 class CastepSimulation(AtomisticSimulation):
     """Class to represent a CASTEP simulation."""
 
-    def __init__(self, options=None, state=None):
+    def __init__(self, options):
         """Initialise a CastepSimulation."""
-        super().__init__(options=options, state=state)
-
-        if options:
-            self._process_options()
+        super().__init__(options)
+        self._process_options()
 
     def _process_options(self):
         """Additional processing on CASTEP options to prepare for writing input

@@ -16,11 +16,10 @@ from matsim.atomistic.simulation.sim import AtomisticSimulation
 class LammpsSimulation(AtomisticSimulation):
     """Class to represent a LAMMPS simulation."""
 
-    def __init__(self, options=None, state=None):
+    def __init__(self, options):
         """Initialise a LammpsSimulation."""
-        super().__init__(options=options, state=state)
-        if options:
-            self._process_options()
+        super().__init__(options)
+        self._process_options()
 
     @classmethod
     def copy_reference_data(cls, sim_params, stage_path, scratch_path):

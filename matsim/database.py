@@ -1129,7 +1129,7 @@ def add_sim_group(sim_group, user_cred=None):
 
     # Add to the run_group table
     rg_insert_ids = []
-    for run_group in sim_group.run_opt['groups']:
+    for run_group in sim_group.run_options['groups']:
 
         sge = sim_group.scratch.sge
         rg_insert = add_run_group(sg_id, run_group, sim_insert_ids, 1, sge)

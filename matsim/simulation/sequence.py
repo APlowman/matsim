@@ -4,18 +4,58 @@ import warnings
 import copy
 import numpy as np
 import yaml
-from matsim.utils import (set_nested_dict, get_recursive,
-                          update_dict, prt, mut_exc_args,)
+
+from matsim import SEQ_DEFN
+from matsim.utils import (set_nested_dict, get_recursive, update_dict, prt,
+                          mut_exc_args, merge, nest)
 from matsim import readwrite
 from matsim.simulation import BaseUpdate
+
+
+def merge_parallel_seqences(sequences):
+    """Get sequence updates, merging those from parallel sequences (those with
+    the same `nest_idx`), and sort by `nest_idx`.
+
+    """
+
+    seq_upds_mergd = {}
+    for seq in sequences:
+
+        nest_idx = seq.nest_idx
+        upds = seq.updates
+
+        if nest_idx in seq_upds_mergd:
+            seq_upds_mergd[nest_idx] = merge(seq_upds_mergd[nest_idx], upds)
+        else:
+            seq_upds_mergd.update({nest_idx: upds})
+
+    seq_upds_srtd = [val for _, val in sorted(seq_upds_mergd.items())]
+
+    return seq_upds_srtd
+
+
+def get_sim_updates(seq_options, base_sim):
+    """Get a list of updates required to form each simulation in the group."""
+
+    sequences = [SimSequence(i, base_sim) for i in seq_options]
+    seq_upds = merge_parallel_seqences(sequences)
+
+    grp_upd = nest(*seq_upds)
+
+    sim_updates = []
+    for upd_lst in grp_upd:
+        upd_lst_flat = [j for i in upd_lst for j in i]
+        sim_updates.append(upd_lst_flat)
+
+    return sim_updates, sequences
 
 
 class SimSequence(object):
     """Options which parameterise a sequence of simulations."""
 
-    def __init__(self, spec, seq_defn):
+    def __init__(self, spec, base_sim):
 
-        params, spec = self._validate_spec(spec, seq_defn)
+        params, spec = self._validate_spec(spec, SEQ_DEFN)
 
         # Store this for easily saving/loading as JSON:
         self.spec = copy.deepcopy(spec)
@@ -50,14 +90,6 @@ class SimSequence(object):
     def from_jsonable(cls, state, seqn_defn):
         """Generate new instance from JSONable dict"""
         return cls(state['spec'], seqn_defn)
-
-    # @classmethod
-    # def load_sequence_definitions(cls, path):
-    #     """Load sequence definitions from a YAML file."""
-    #     with open(path, 'r') as seq_file:
-    #         seq_defn = yaml.safe_load(seq_file)
-
-    #     cls.seq_defn = seq_defn
 
     def _validate_spec(self, spec, seq_defn):
         """

@@ -1584,6 +1584,7 @@ def check_success_single_point(dir_path):
     a successful CASTEP SinglePoint run.
 
     """
+    return True
 
 
 def check_success_geom_opt(dir_path):
@@ -1591,3 +1592,4 @@ def check_success_geom_opt(dir_path):
     a successful CASTEP GeometryOptimisation run.
 
     """
+    return True
