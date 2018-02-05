@@ -95,8 +95,6 @@ def upload_dropbox_dir(dbx, local_path, dropbox_path, overwrite=False,
 
     """
 
-    print('exclude is : {}'.format(exclude))
-
     # Validation
     if not os.path.isdir(local_path):
         raise ValueError(
