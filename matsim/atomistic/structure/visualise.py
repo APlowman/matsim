@@ -17,7 +17,7 @@ from matsim import readwrite, REF_PATH, plotting, utils
 
 def visualise(structure, show_iplot=False, save=False, save_args=None, plot_2d='xyz', ret_fig=False,
               group_atoms_by=None, group_lattice_sites_by=None, group_interstices_by=None,
-              wrap_sym_op=True):
+              wrap_sym_op=True, style=None):
     """
     Parameters
     ----------
@@ -53,6 +53,13 @@ def visualise(structure, show_iplot=False, save=False, save_args=None, plot_2d='
               atoms: [...], lattice_sites: [...], interstices: [...]} etc.
 
     """
+
+    style_def = {
+        'width': 500,
+        'height': 500,
+    }
+    style = style or {}
+    style = {**style_def, **style}
 
     if save:
         if save_args is None:
@@ -337,7 +344,7 @@ def visualise(structure, show_iplot=False, save=False, save_args=None, plot_2d='
                 #         },
                 #     })
 
-    f3d, f2d = plotting.plot_geometry_plotly(points, boxes, text)
+    f3d, f2d = plotting.plot_geometry_plotly(points, boxes, text, style=style)
 
     if show_iplot:
         iplot(f3d)

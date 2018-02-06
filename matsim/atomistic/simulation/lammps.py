@@ -68,7 +68,7 @@ class LammpsSimulation(AtomisticSimulation):
         files.
 
         """
-        print('in process opts')
+
         super()._process_options()
 
         lammps_opts = self.options['params']['lammps']

@@ -71,7 +71,7 @@ class SimSequence(object):
         self.val_seq_type = params['val_seq_type']
         self.map_to_dict = params['map_to_dict']
         self.val_name = params['val_name']
-        self.path_fmt_val_idx = params.get('path_fmt_val_idx', False)
+        self.affects_structure = params['affects_structure']
 
         self.name = spec.pop('name')
         self.nest_idx = spec.pop('nest_idx')
@@ -127,6 +127,7 @@ class SimSequence(object):
             'additional_spec',
             'val_name',
             'map_to_dict',
+            'affects_structure',
         ]
         ok_params = req_params
 
@@ -246,16 +247,12 @@ class SimSequence(object):
         updates = []
         for val_idx, val in enumerate(self.vals):
 
-            if self.path_fmt_val_idx:
-                path_str = self.path_fmt.format(val_idx)
+            if self.val_seq_type == 'array':
+                path_str = readwrite.format_arr(
+                    val, **fmt_arr_opt_path)[:-2]
 
             else:
-                if self.val_seq_type == 'array':
-                    path_str = readwrite.format_arr(
-                        val, **fmt_arr_opt_path)[:-2]
-
-                else:
-                    path_str = self.path_fmt.format(val)
+                path_str = self.path_fmt.format(val)
 
             val_formatted = copy.deepcopy(val)
             if self.val_fmt:

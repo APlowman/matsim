@@ -123,6 +123,7 @@ def make_new_simgroup(options):
     print('Making new SimGroup -- PENDING')
 
     path_options = options.pop('path_options')
+    vis_options = options.pop('visualise')
     # TODO: deal with importing structure (and group):
     # import_options = options.pop('import_options')
     run_options = options.pop('run')
@@ -151,7 +152,8 @@ def make_new_simgroup(options):
     validate_run_group_sim_idx(run_options, len(sim_updates))
 
     sim_group = SimGroup(base_sim_options, run_options, path_options,
-                         sim_updates, sequences, human_id, name)
+                         sim_updates, sequences, human_id, name,
+                         vis_options=vis_options)
 
     print('Making new SimGroup -- DONE')
 

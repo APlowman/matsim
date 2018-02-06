@@ -270,12 +270,14 @@ class SimGroup(object):
     }
 
     def __init__(self, base_sim_options, run_options, path_options, sim_updates,
-                 sequences, human_id, name, sims=None, db_id=None):
+                 sequences, human_id, name, sims=None, db_id=None,
+                 vis_options=None):
         """Initialise a SimGroup object."""
 
         self.base_sim_options = base_sim_options
         self.run_options = run_options
         self.path_options = path_options
+        self.vis_options = vis_options
         self.sim_updates = sim_updates
         self.sequences = sequences
         self.human_id = human_id
@@ -433,8 +435,42 @@ class SimGroup(object):
 
         return cls(**state)
 
+    def make_visualisations(self):
+        """Add plots to the simulation directories on stage."""
+
+        # Get the deepest sequence nest index whose values affect the structure
+        affect_struct = [i.affects_structure for i in self.sequences]
+        deepest_idx = len(affect_struct) - affect_struct[::-1].index(True) - 1
+
+        all_plot_paths = []
+        vis_path_final = ''
+        for sim_idx, sim in enumerate(self.sims):
+
+            sim_path = self.get_sim_path(sim_idx)
+            vis_path = sim_path[:(deepest_idx + 2)]
+
+            if vis_path[-1] != vis_path_final:
+
+                vis_path_final = vis_path[-1]
+                vis_dir_path = self.stage.path.joinpath(*vis_path, 'plots')
+                vis_dir_path.mkdir(parents=True)
+                plot_path = str(vis_dir_path.joinpath('structure.html'))
+                all_plot_paths.append(vis_path + ['plots'])
+                vis_args = {
+                    'save': True,
+                    'save_args': {
+                        'filename': plot_path
+                    },
+                    'plot_2d': 'xyz',
+                    'group_atoms_by': self.vis_options.get('group_atoms_by'),
+                    'style': self.vis_options.get('style'),
+                }
+                sim.structure.visualise(**vis_args)
+
+        return all_plot_paths
+
     def write_initial_runs(self):
-        """Populate the sims attribute and write input files on stage."""
+        """Write input files on stage."""
 
         if self.sims is not None:
             raise ValueError('Simulations have already been generated for this'
@@ -451,12 +487,16 @@ class SimGroup(object):
         scratch_path = self.scratch.path
         stage_path.mkdir(parents=True)
 
+        # Copy makesims input file:
+        shutil.copy2(CONFIG['option_paths']['makesims'], stage_path)
+
         sim_params = self.base_sim_options['params'][self.software_name]
 
         self.sim_class.copy_reference_data(
             sim_params, stage_path, scratch_path)
 
         self.generate_sim_group_sims()
+        self._all_plot_paths = self.make_visualisations()
 
         # Loop through each requested run group:
         for rg_idx, run_group in enumerate(self.run_options['groups']):
@@ -710,8 +750,13 @@ class SimGroup(object):
             self.check_is_stage_machine()
 
             # Copy directory to scratch:
-            conn = self.get_stage_to_scratch_conn()
-            conn.copy_to_dest()
+            conn = ResourceConnection(self.stage, self.scratch)
+            conn.copy_to_dest(ignore=['plots'])
+
+            # Copy plots directly to archive:
+            conn_arch = ResourceConnection(self.stage, self.archive)
+            for plot_path in self._all_plot_paths:
+                conn_arch.copy_to_dest(subpath=plot_path)
 
             # Change state of all runs to 2 ("pending_run")
             run_groups = database.get_run_groups(self.db_id)
@@ -756,11 +801,6 @@ class SimGroup(object):
         if CONFIG['machine_name'] != self.scratch.machine_name:
             raise ValueError('This machine does not have the same ID as that '
                              'of the Scratch associated with this SimGroup.')
-
-    def get_stage_to_scratch_conn(self):
-        """Get a ResourceConnection between Stage and Scratch."""
-        self.check_is_stage_machine()
-        return ResourceConnection(self.stage, self.scratch)
 
     def add_runs(self, opt):
         """Add additional run to one or more simulation on scratch."""
