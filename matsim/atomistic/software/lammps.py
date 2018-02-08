@@ -458,11 +458,13 @@ def read_lammps_log(path):
     WARN = 'WARNING:'
     ERR = 'ERROR:'
     VERS = 'LAMMPS'
+    pot_file_match = 'pair_coeff'
 
     dump_name = None
     thermo_style_args = None
     thermo_style_out = None
     vers = None
+    pot_file = None
 
     warns = []
     errs = []
@@ -479,6 +481,9 @@ def read_lammps_log(path):
                 continue
 
             if mode == 'scan':
+
+                if pot_file_match in ln:
+                    pot_file = pot_file_match.split('"')[1:2]
 
                 if VERS in ln:
                     vers = ln.split('(')[1].split(')')[0]
