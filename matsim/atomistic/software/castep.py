@@ -549,6 +549,14 @@ def read_castep_file(cst_path):
     CELL_CON_NUM = 'Number of cell constraints='
     CELL_CON = 'Cell constraints are:'
     WARNING = 'Warning:'
+    geom_method_match = 'optimization method                            :'
+    geom_energy_tol_match = 'total energy convergence tolerance             :'
+    geom_force_tol_match = 'max ionic |force| tolerance             :'
+    geom_disp_tol_match = 'max ionic |displacement| tolerance             :'
+    geom_stress_tol_match = 'max |stress component| tolerance             :'
+    dm_scheme_match = 'density-mixing scheme                          :'
+    opt_strategy_match = 'optimization strategy                          :'
+    smearing_width_match = 'smearing width                                 :'
 
     header_lns = 0  # Header line is repeated three times for each header
     version = None
@@ -571,6 +579,15 @@ def read_castep_file(cst_path):
     calc_type_str = None
     errors = []
     warnings = []
+    geom_method = None
+    geom_energy_tol = None
+    geom_force_tol = None
+    geom_disp_tol = None
+    geom_stress_tol = None
+    dm_scheme = None
+    metals_method = None
+    opt_strategy = None
+    smearing_width = None
 
     bfgs_iter_idx = 0
 
@@ -882,6 +899,9 @@ def read_castep_file(cst_path):
                                                  calc_type_str, cur_calc_type_str))
                     calc_type_str = cur_calc_type_str
 
+                elif opt_strategy_match in ln:
+                    opt_strategy = ln_s[-1]
+
                 elif PARAM_ECUT in ln:
                     ecut = float(ln_s[-2])
 
@@ -899,11 +919,40 @@ def read_castep_file(cst_path):
 
                 elif PARAM_METALLIC in ln:
                     metallic = True
+
+                    if 'density mixing treatment' in ln:
+                        metals_method = 'DM'
+                    elif 'ensemble DFT treatment:
+                        metals_method = 'EDFT'
+                    else:
+                        raise ValueError('Cannot determine metals method.')
+
                     SCF_FINAL_EN = 'Final energy, E             ='
                     scf_num_cols = 4
 
                 elif PARAM_ELEC_EN_TOL in ln:
                     elec_energy_tol = float(ln_s[-2])
+
+                elif smearing_width_match in ln:
+                    smearing_width = float(ln_s[-2])
+
+                elif dm_scheme_match in ln:
+                    dm_scheme = ln_s[-1]
+
+                elif geom_method_match in ln:
+                    geom_method = ln_s[-1]
+
+                elif geom_energy_tol_match in ln:
+                    geom_energy_tol = float(ln_s[-2])
+
+                elif geom_force_tol_match in ln:
+                    geom_force_tol = float(ln_s[-2])
+
+                elif geom_disp_tol_match in ln:
+                    geom_disp_tol = float(ln_s[-2])
+
+                elif geom_stress_tol_match in ln:
+                    geom_stress_tol = float(ln_s[-2])
 
                 elif GO_PARAM_WRITE_GEOM in ln:
                     write_geom = True if ln_s[-1] == 'on' else False
@@ -1046,6 +1095,8 @@ def read_castep_file(cst_path):
 
         params = {
             'calc_type':                calc_type_str,
+            'opt_strategy':             opt_strategy,
+            'opt_strategy':             opt_strategy,
             'cut_off_energy':           ecut,
             'fine_grid_size':           fine_grid,
             'num_electrons':            num_elec,
@@ -1053,6 +1104,7 @@ def read_castep_file(cst_path):
             'metallic':                 metallic,
             'net_charge':               net_charge,
             'elec_energy_tol':          elec_energy_tol,
+            'smearing_width':           smearing_width,
             'kpoint_mp_grid':           kpoint_mp_grid,
             'kpoint_mp_offset':         kpoint_mp_offset,
             'kpoint_num':               kpoint_num,
@@ -1064,6 +1116,13 @@ def read_castep_file(cst_path):
             'cell_constraints':         cell_constraints,
             'cell_constraints_num':     cell_constraints_num,
             'finite_basis_correction':  finite_basis_correction,
+            'dm_scheme':                dm_scheme,
+            'metals_method':            metals_method,
+            'geom_mthod':               geom_method,
+            'geom_energy_tol':          geom_energy_tol,
+            'geom_force_tol':           geom_force_tol,
+            'geom_disp_tol':            geom_disp_tol,
+            'geom_stress_tol':          geom_stress_tol,
 
         }
 
