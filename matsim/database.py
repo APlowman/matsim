@@ -15,10 +15,13 @@ _AUTO_LOOKUP = {
 }
 
 
-def connect_db():
+def connect_db(dict_curs=True):
     """Connect to the database."""
-    connection = pymysql.connect(**DB_CONFIG, charset='utf8mb4',
-                                 cursorclass=pymysql.cursors.DictCursor)
+    if dict_curs:
+        connection = pymysql.connect(**DB_CONFIG, charset='utf8mb4',
+                                     cursorclass=pymysql.cursors.DictCursor)
+    else:
+        connection = pymysql.connect(**DB_CONFIG, charset='utf8mb4')
     return connection
 
 
@@ -51,7 +54,7 @@ def exec_insert(sql, args):
     return last_row_id
 
 
-def exec_select(sql, args, fetch_all=False):
+def exec_select(sql, args, fetch_all=False, dict_curs=True):
     """Execute a select SQL statement.
 
     Parameters
@@ -67,7 +70,7 @@ def exec_select(sql, args, fetch_all=False):
 
     """
 
-    conn = connect_db()
+    conn = connect_db(dict_curs)
     try:
         with conn.cursor() as cursor:
 

@@ -554,8 +554,9 @@ def read_castep_file(cst_path):
     geom_force_tol_match = 'max ionic |force| tolerance             :'
     geom_disp_tol_match = 'max ionic |displacement| tolerance             :'
     geom_stress_tol_match = 'max |stress component| tolerance             :'
-    dm_scheme_match = 'density-mixing scheme                          :'
+    mixing_scheme_match = 'density-mixing scheme                          :'
     opt_strategy_match = 'optimization strategy                          :'
+    xc_func_match = 'using functional                               :'
     smearing_width_match = 'smearing width                                 :'
 
     header_lns = 0  # Header line is repeated three times for each header
@@ -584,9 +585,10 @@ def read_castep_file(cst_path):
     geom_force_tol = None
     geom_disp_tol = None
     geom_stress_tol = None
-    dm_scheme = None
+    mixing_scheme = None
     metals_method = None
     opt_strategy = None
+    xc_func = None
     smearing_width = None
 
     bfgs_iter_idx = 0
@@ -900,7 +902,10 @@ def read_castep_file(cst_path):
                     calc_type_str = cur_calc_type_str
 
                 elif opt_strategy_match in ln:
-                    opt_strategy = ln_s[-1]
+                    opt_strategy = ln.split(':')[-1].strip()
+
+                elif xc_func_match in ln:
+                    xc_func = ln.split(':')[-1].strip()
 
                 elif PARAM_ECUT in ln:
                     ecut = float(ln_s[-2])
@@ -922,7 +927,7 @@ def read_castep_file(cst_path):
 
                     if 'density mixing treatment' in ln:
                         metals_method = 'DM'
-                    elif 'ensemble DFT treatment:
+                    elif 'ensemble DFT treatment':
                         metals_method = 'EDFT'
                     else:
                         raise ValueError('Cannot determine metals method.')
@@ -936,8 +941,8 @@ def read_castep_file(cst_path):
                 elif smearing_width_match in ln:
                     smearing_width = float(ln_s[-2])
 
-                elif dm_scheme_match in ln:
-                    dm_scheme = ln_s[-1]
+                elif mixing_scheme_match in ln:
+                    mixing_scheme = ln_s[-1]
 
                 elif geom_method_match in ln:
                     geom_method = ln_s[-1]
@@ -1096,7 +1101,7 @@ def read_castep_file(cst_path):
         params = {
             'calc_type':                calc_type_str,
             'opt_strategy':             opt_strategy,
-            'opt_strategy':             opt_strategy,
+            'xc_functional':            xc_func,
             'cut_off_energy':           ecut,
             'fine_grid_size':           fine_grid,
             'num_electrons':            num_elec,
@@ -1116,9 +1121,9 @@ def read_castep_file(cst_path):
             'cell_constraints':         cell_constraints,
             'cell_constraints_num':     cell_constraints_num,
             'finite_basis_correction':  finite_basis_correction,
-            'dm_scheme':                dm_scheme,
+            'mixing_scheme':            mixing_scheme,
             'metals_method':            metals_method,
-            'geom_mthod':               geom_method,
+            'geom_method':              geom_method,
             'geom_energy_tol':          geom_energy_tol,
             'geom_force_tol':           geom_force_tol,
             'geom_disp_tol':            geom_disp_tol,
