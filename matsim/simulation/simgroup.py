@@ -215,8 +215,9 @@ def write_jobscript(path, calc_paths, method, num_cores, is_sge, job_array, exec
         replace_in_file(help_js_path, '<replace_with_dir_list>',
                         dir_list_path_scratch)
 
-    # Make a directory for job-related output. E.g. .o and .e files from CSF.
-    os.makedirs(os.path.join(path, 'output'))
+    if is_sge:
+        # Make a directory for SGE-related output. E.g. .o and .e files from CSF.
+        os.makedirs(os.path.join(path, 'sge'))
 
     return job_array
 
@@ -742,40 +743,24 @@ class SimGroup(object):
     def copy_to_scratch(self):
         """Copy group from Stage to Scratch."""
 
-        copy_scratch = self.run_options['copy_to_scratch']
-        do_copy = False
+        print('Copying SimGroup to Scratch -- PENDING')
+        self.check_is_stage_machine()
 
-        if copy_scratch == 'ask':
-            if utils.confirm('Copy sim group to scratch?'):
-                do_copy = True
+        # Copy directory to scratch:
+        conn = ResourceConnection(self.stage, self.scratch)
+        conn.copy_to_dest(ignore=['plots'])
 
-        elif copy_scratch is True:
-            do_copy = True
+        # Copy plots directly to archive:
+        conn_arch = ResourceConnection(self.stage, self.archive)
+        for plot_path in self._all_plot_paths:
+            conn_arch.copy_to_dest(subpath=plot_path)
 
-        if not do_copy:
-            print('Sim group was NOT copied to scratch.')
+        # Change state of all runs to 2 ("pending_run")
+        run_groups = database.get_run_groups(self.db_id)
+        for rg_id in [i['id'] for i in run_groups]:
+            database.set_all_run_states(rg_id, 2)
 
-        else:
-            print('Copying SimGroup to Scratch -- PENDING')
-            self.check_is_stage_machine()
-
-            # Copy directory to scratch:
-            conn = ResourceConnection(self.stage, self.scratch)
-            conn.copy_to_dest(ignore=['plots'])
-
-            # Copy plots directly to archive:
-            conn_arch = ResourceConnection(self.stage, self.archive)
-            for plot_path in self._all_plot_paths:
-                conn_arch.copy_to_dest(subpath=plot_path)
-
-            # Change state of all runs to 2 ("pending_run")
-            run_groups = database.get_run_groups(self.db_id)
-            for rg_id in [i['id'] for i in run_groups]:
-                database.set_all_run_states(rg_id, 2)
-
-            print('Copying SimGroup to Scratch -- DONE')
-
-        return do_copy
+        print('Copying SimGroup to Scratch -- DONE')
 
     def get_machine_resource(self):
         """Returns a list of Resource (Stage and/or Scratch) this machine

@@ -4,8 +4,8 @@
 #$ -N <replace_with_process_job_name>_<replace_with_run_group_idx>
 #$ -cwd
 #$ -V
-#$ -o output/
-#$ -e output/
+#$ -o sge/
+#$ -e sge/
 #$ -t <replace_with_job_index_range>
 #$ -<replace_with_job_dependancy_cmd> <replace_with_run_group_job_name>_<replace_with_run_group_idx>
 

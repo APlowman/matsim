@@ -4,8 +4,8 @@
 #$ -N <replace_with_job_name>
 #$ -cwd
 #$ -V
-#$ -o output/
-#$ -e output/
+#$ -o sge/
+#$ -e sge/
 #$ -pe <replace_with_pe> <replace_with_num_cores>
 
 SUBDIR=`sed -n 1p <replace_with_dir_list>`

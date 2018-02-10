@@ -4,7 +4,7 @@
 #$ -N <replace_with_job_name>
 #$ -cwd
 #$ -V
-#$ -o output/
-#$ -e output/
+#$ -o sge/
+#$ -e sge/
 
 bash lammps_single_job.sh

@@ -4,8 +4,8 @@
 #$ -N <replace_with_job_name>
 #$ -cwd
 #$ -V
-#$ -o output/
-#$ -e output/
+#$ -o sge/
+#$ -e sge/
 #$ -t <replace_with_job_index_range>
 
 SUBDIR=`sed -n "${SGE_TASK_ID}p" <replace_with_dir_list>`
