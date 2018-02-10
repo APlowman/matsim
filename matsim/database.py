@@ -1236,11 +1236,36 @@ def get_sim_group_runs(sim_group_id, states=None, user_cred=None):
     return run_groups
 
 
+def get_run_group_runs(run_group_id, user_cred=None):
+    """Get runs belonging to a given run group"""
+
+    user_cred = user_cred or CONFIG['user']
+    user_id = get_user_id(user_cred)
+
+    check_run_group_ownership(run_group_id, user_cred=user_cred)
+
+    sql = (
+        'select * '
+        'from run '
+        'where run_group_id = %s '
+        'order by order_id'
+    )
+    runs = exec_select(sql, (run_group_id, user_id), fetch_all=True)
+
+    if not runs:
+        msg = 'No runs in run group with ID {} is associated with this user.'
+        raise ValueError(msg.format(run_group_id))
+
+    return runs
+
+
 def get_run_group(run_group_id, user_cred=None):
     """Find out if a run group has been submitted."""
 
     user_cred = user_cred or CONFIG['user']
     user_id = get_user_id(user_cred)
+
+    check_run_group_ownership(run_group_id, user_cred=user_cred)
 
     sql = (
         'select * '
