@@ -78,6 +78,7 @@ def main(args=sys.argv[1:]):
         hid = opts[0][1]
         do_update = True
         run_group_idx = None
+        force_process_run_idx = None
         for opt, arg in opts:
             if opt == '--no-update':
                 do_update = False
