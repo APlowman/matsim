@@ -6,6 +6,7 @@ from datetime import datetime
 import copy
 import shutil
 
+from matsim.copy_multi import copytree_multi
 from matsim import utils, database, dbhelpers as dbh
 from matsim.utils import prt
 
@@ -310,7 +311,7 @@ class ResourceConnection(object):
                     ignore_func = shutil.ignore_patterns(*ignore)
                 else:
                     ignore_func = None
-                shutil.copytree(src_path, dst_path, ignore=ignore_func)
+                copytree_multi(src_path, dst_path, ignore=ignore_func)
 
     def run_command(self, cmd, cwd=None, block=True):
         """Execute a command on the destination resource.
