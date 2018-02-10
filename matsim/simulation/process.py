@@ -19,10 +19,10 @@ def main(sim_group, run_group_idx=None, do_update=True, force_process=None):
 
     Parameters
     ----------
-    run_group_idx : int, optional
+    run_group_idx : int, optional, zero-indexed.
         If set, only process runs belonging to the this run group. Otherwise,
         process all run groups.
-    force_process, list of int, optional
+    force_process, list of int, optional, zero-indexed.
         List of run indices within specified run group to initially set to 
         `pending_process` regardless of checking `qstat`.
 
@@ -49,7 +49,7 @@ def main(sim_group, run_group_idx=None, do_update=True, force_process=None):
         rg_runs = database.get_run_group_runs(rg_id)
         prt(rg_runs, 'rg_runs')
 
-        force_run_ids = [rg_runs[i - 1]['id'] for i in force_process]
+        force_run_ids = [rg_runs[i]['id'] for i in force_process]
         prt(force_run_ids, 'force_run_ids')
 
         database.set_many_run_states(force_run_ids, 6)

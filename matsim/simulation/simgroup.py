@@ -220,7 +220,7 @@ def write_jobscript(path, calc_paths, method, num_cores, is_sge, job_array, exec
 
 
 def write_process_jobscript(path, job_name, dependency, num_calcs, human_id,
-                            run_group_idx):
+                            run_group_idx, job_array):
     """Write a job array dependency jobscript to auto-process a run group."""
 
     # Get the template file path
@@ -238,6 +238,9 @@ def write_process_jobscript(path, job_name, dependency, num_calcs, human_id,
     replace_in_file(js_path, '<replace_with_sim_group_human_id>', human_id)
     replace_in_file(js_path, '<replace_with_run_group_idx>',
                     str(run_group_idx))
+
+    job_dep_cmd = 'hold_jid_ad' if job_array else 'hold_jid'
+    replace_in_file(js_path, '<replace_with_job_dependancy_cmd>', job_dep_cmd)
 
 
 class SimGroup(object):
@@ -548,9 +551,11 @@ class SimGroup(object):
                 'executable': soft_inst['executable'],
             }
 
+            job_array = False
             if self.scratch.sge:
+                job_array = run_group['sge']['job_array']
                 js_params.update({
-                    'job_array': run_group['sge']['job_array'],
+                    'job_array': job_array,
                     'selective_submission': run_group['sge']['selective_submission'],
                 })
             write_jobscript(**js_params)
@@ -565,6 +570,7 @@ class SimGroup(object):
                     'num_calcs': len(sim_paths_scratch),
                     'human_id': self.human_id,
                     'run_group_idx': rg_idx,
+                    'job_array': job_array,
                 }
                 write_process_jobscript(**pjs_params)
 

@@ -1,15 +1,15 @@
 #!/bin/bash
 
 #$ -S /bin/bash
-#$ -N <replace_with_process_job_name>
+#$ -N <replace_with_process_job_name>_<replace_with_run_group_idx>
 #$ -cwd
 #$ -V
 #$ -o output/
 #$ -e output/
 #$ -t <replace_with_job_index_range>
-#$ -hold_jid_ad <replace_with_run_group_job_name>_<replace_with_run_group_idx>
+#$ -<replace_with_job_dependancy_cmd> <replace_with_run_group_job_name>_<replace_with_run_group_idx>
 
 # Run process for this sim group, and run group idx, after each run finishes:
 source activate matsim
-matsim --process <replace_with_sim_group_human_id> --run-group <replace_with_run_group_idx> --no-update --force-process $SGE_TASK_ID
+matsim --process <replace_with_sim_group_human_id> --run-group <replace_with_run_group_idx> --no-update --force-process $(($SGE_TASK_ID - 1))
 source deactivate
