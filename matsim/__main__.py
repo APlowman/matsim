@@ -92,7 +92,7 @@ def main(args=sys.argv[1:]):
 
         sim_group = SimGroup.load_state(hid, 'scratch')
         proc_args = {
-            'sim_group': hid,
+            'sim_group': sim_group,
             'run_group_idx': run_group_idx,
             'do_update': do_update,
             'force_process': force_process_run_idx,
