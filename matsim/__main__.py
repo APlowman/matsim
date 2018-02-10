@@ -25,7 +25,7 @@ def main(args=sys.argv[1:]):
         opts, args = getopt.getopt(args, 'ml:s:p:f:r:u', long_args)
 
     except getopt.GetoptError:
-        print('Error parsing options: {} and arguments: {}'.format(opts, args))
+        print('Error parsing arguments: {}'.format(args))
         sys.exit(2)
 
     if opts[0][0] in ('-m', '--make'):
