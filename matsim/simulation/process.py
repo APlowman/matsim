@@ -175,6 +175,8 @@ def main(sim_group, run_group_idx=None, do_update=True, force_process=None):
                 prt(stdeo_path, 'stdeo_path')
                 prt(stdout_path, 'stdout_path')
                 prt(stderr_path, 'stderr_path')
+                arch_conn.copy_to_dest(subpath=stdout_path)
+                arch_conn.copy_to_dest(subpath=stderr_path)
 
         # Update states to 10 ("archived")
         database.set_many_run_states(archived_ids, 10)
