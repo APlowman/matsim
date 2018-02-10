@@ -145,8 +145,8 @@ def main(sim_group, run_group_idx=None, do_update=True, force_process=None):
 
                 # Need to form log stdout/err filenames:
                 # Need SGE job_id from table `run_group_sge`
-                sge_job_id = run_group_sge_job_id[pen_run_idx]
-                prt(sge_job_id, 'sge_job_id')
+                sge_job_id_str = str(run_group_sge_job_id[pen_run_idx])
+                prt(sge_job_id_str, 'sge_job_id_str')
 
                 rg_idx_str = str(sim_run_idx[pen_run_idx][1])
                 prt(rg_idx_str, 'rg_idx_str')
@@ -154,7 +154,7 @@ def main(sim_group, run_group_idx=None, do_update=True, force_process=None):
                 r_idx = run_order_id[pen_run_idx]
                 prt(r_idx, 'r_idx')
 
-                stdoe_fn = sim_group.name + '_' + rg_idx_str + '.{}' + sge_job_id
+                stdoe_fn = sim_group.name + '_' + rg_idx_str + '.{}' + sge_job_id_str
 
                 if run_group_is_job_arr[pen_run_idx]:
                     stdoe_fn += '.' + r_idx
