@@ -82,14 +82,18 @@ def main(sim_group, run_group_idx=None, do_update=True, force_process=None):
     no_errs_pen_idx = []
     errs_pen_idx = []
     sim_run_idx = []
-
+    run_group_sge_job_id = []
+    run_order_id = []
+    run_group_is_job_arr = []
     for pen_run_idx, pen_run in enumerate(pending_process):
 
         # Get path on scratch of run:
         sim_idx = pen_run['sim_order_id'] - 1
         run_idx = pen_run['run_group_order_id'] - 1
         sim_run_idx.append([sim_idx, run_idx])
-
+        run_group_sge_job_id.append(pen_run['sge_job_id'])
+        run_order_id.append(pen_run['order_id'])
+        run_group_is_job_arr.append(bool(pen_run['job_array']))
         run_success = sim_group.check_run_success(sim_idx, run_idx)
 
         if run_success:
@@ -128,8 +132,6 @@ def main(sim_group, run_group_idx=None, do_update=True, force_process=None):
             subpath = ['sim_group.json']
             arch_conn.copy_to_dest(subpath=subpath, file_backup=True)
 
-            # Copy run_groups/<run_group_idx>/output
-
         archived_ids = []
         for pen_run_idx in no_errs_pen_idx:
             # Copy relevent sim/run/ directories to Archive location
@@ -137,6 +139,42 @@ def main(sim_group, run_group_idx=None, do_update=True, force_process=None):
             arch_conn.copy_to_dest(subpath=subpath)
 
             archived_ids.append(pending_process[pen_run_idx]['id'])
+
+            if sim_group.scratch.sge:
+                # Copy SGE log files for these runs:
+
+                # Need to form log stdout/err filenames:
+                # Need SGE job_id from table `run_group_sge`
+                sge_job_id = run_group_sge_job_id[pen_run_idx]
+                prt(sge_job_id, 'sge_job_id')
+
+                rg_idx = sim_run_idx[pen_run_idx][1]
+                prt(rg_idx, 'rg_idx')
+
+                r_idx = run_order_id[pen_run_idx]
+                prt(r_idx, 'r_idx')
+
+                stdoe_fn = sim_group.name + '_' + rg_idx + '.{}' + sge_job_id
+
+                if run_group_is_job_arr[pen_run_idx]:
+                    stdoe_fn += '.' + r_idx
+
+                stdout_fn = stdoe_fn.format('o')
+                stderr_fn = stdoe_fn.format('e')
+
+                prt(stdoe_fn, 'stdoe_fn')
+                prt(stdout_fn, 'stdout_fn')
+                prt(stderr_fn, 'stderr_fn')
+
+                stdeo_path = ['run_groups', str(rg_idx), 'sge']
+                prt(stdeo_path, 'stdeo_path')
+
+                stdout_path = stdeo_path + [stdout_fn]
+                stderr_path = stdeo_path + [stderr_fn]
+
+                prt(stdeo_path, 'stdeo_path')
+                prt(stdout_path, 'stdout_path')
+                prt(stderr_path, 'stderr_path')
 
         # Update states to 10 ("archived")
         database.set_many_run_states(archived_ids, 10)
