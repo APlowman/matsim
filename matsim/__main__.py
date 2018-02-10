@@ -67,6 +67,11 @@ def main(args=sys.argv[1:]):
         for opt, arg in opts:
             if opt in ('-r', '--run-group'):
                 run_group_idx = int(arg)
+
+        if run_group_idx is None:
+            raise ValueError('Must specify `run_group_idx` using option: `-r`'
+                             ' or `--run-group`.')
+
         sim_group = SimGroup.load_state(hid, 'stage')
         sim_group.submit_run_groups([run_group_idx])
 
