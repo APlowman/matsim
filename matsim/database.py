@@ -1240,7 +1240,7 @@ def get_run_group_runs(run_group_id, user_cred=None):
     """Get runs belonging to a given run group"""
 
     user_cred = user_cred or CONFIG['user']
-    user_id = get_user_id(user_cred)
+    _ = get_user_id(user_cred)
 
     check_run_group_ownership(run_group_id, user_cred=user_cred)
 
@@ -1250,7 +1250,7 @@ def get_run_group_runs(run_group_id, user_cred=None):
         'where run_group_id = %s '
         'order by order_id'
     )
-    runs = exec_select(sql, (run_group_id, user_id), fetch_all=True)
+    runs = exec_select(sql, (run_group_id,), fetch_all=True)
 
     if not runs:
         msg = 'No runs in run group with ID {} is associated with this user.'

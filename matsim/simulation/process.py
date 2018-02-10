@@ -44,8 +44,11 @@ def main(sim_group, run_group_idx=None, do_update=True, force_process=None):
 
     if force_process:
         rg_id = database.get_run_groups(sg_id)[run_group_idx]['id']
+        prt(rg_id, 'rg_id')
         rg_runs = database.get_run_group_runs(rg_id)
+        prt(rg_runs, 'rg_runs')
         force_run_ids = [rg_runs[i]['id'] for i in force_process]
+        prt(force_run_ids, 'force_run_ids')
         database.set_many_run_states(force_run_ids, 6)
 
     # Find all runs belonging to this run group in states 6 "pending_process"
