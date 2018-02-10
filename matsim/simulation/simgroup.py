@@ -498,8 +498,15 @@ class SimGroup(object):
         self.generate_sim_group_sims()
         self._all_plot_paths = self.make_visualisations()
 
+        for sim_idx, _ in enumerate(self.sims):
+            self.sims[sim_idx].runs = [
+                {'result': None, }
+                for _ in range(len(self.run_options['groups']))]
+
         # Loop through each requested run group:
         for rg_idx, run_group in enumerate(self.run_options['groups']):
+
+            prt(rg_idx, 'rg_idx')
 
             # Loop over each simulation in this run group
             sim_paths_stage = []
@@ -517,9 +524,6 @@ class SimGroup(object):
 
                 # Write simulation input files:
                 self.sims[sim_idx].write_input_files(str(sm_pth_stg))
-                self.sims[sim_idx].runs.append({
-                    'result': None,
-                })
 
             # Write supporting files: jobscript, dirlist, options records
             rg_path = ['run_groups', str(rg_idx)]
