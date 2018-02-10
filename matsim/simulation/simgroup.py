@@ -218,6 +218,8 @@ def write_jobscript(path, calc_paths, method, num_cores, is_sge, job_array, exec
     # Make a directory for job-related output. E.g. .o and .e files from CSF.
     os.makedirs(os.path.join(path, 'output'))
 
+    return job_array
+
 
 def write_process_jobscript(path, job_name, dependency, num_calcs, human_id,
                             run_group_idx, job_array):
@@ -551,14 +553,12 @@ class SimGroup(object):
                 'executable': soft_inst['executable'],
             }
 
-            job_array = False
             if self.scratch.sge:
-                job_array = run_group['sge']['job_array']
                 js_params.update({
-                    'job_array': job_array,
+                    'job_array': run_group['sge']['job_array'],
                     'selective_submission': run_group['sge']['selective_submission'],
                 })
-            write_jobscript(**js_params)
+            job_array = write_jobscript(**js_params)
 
             if run_group['auto_process'] and self.scratch.sge:
 
