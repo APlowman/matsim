@@ -561,6 +561,12 @@ class SimGroup(object):
                 })
             job_array = write_jobscript(**js_params)
 
+            if self.scratch.sge:
+                # May need to change job_array if specified True by user, but
+                # only one job:
+                # TODO: move this logic to earlier validation step.
+                self.run_options['groups'][rg_idx]['sge']['job_array'] = job_array
+
             if run_group['auto_process'] and self.scratch.sge:
 
                 # Add process jobscript:
