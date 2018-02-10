@@ -93,7 +93,7 @@ def main(sim_group, run_group_idx=None, do_update=True, force_process=None):
         sim_run_idx.append([sim_idx, run_idx])
         run_group_sge_job_id.append(pen_run['sge_job_id'])
         run_order_id.append(pen_run['order_id'])
-        run_group_is_job_arr.append(bool(pen_run['job_array']))
+        run_group_is_job_arr.append(bool(pen_run['sge_job_array']))
         run_success = sim_group.check_run_success(sim_idx, run_idx)
 
         if run_success:
