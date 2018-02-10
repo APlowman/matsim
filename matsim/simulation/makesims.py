@@ -92,7 +92,7 @@ def add_sim_group_to_db(sim_group):
     # Add sim grounp database ID:
     sim_group.db_id = db_ret['sim_group_id']
 
-    # Add run grounp database IDs:
+    # Add run group database IDs:
     run_groups = sim_group.run_options['groups']
     for rg_idx, _ in enumerate(run_groups):
         run_group = run_groups[rg_idx]
