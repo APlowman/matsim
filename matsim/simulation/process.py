@@ -148,13 +148,13 @@ def main(sim_group, run_group_idx=None, do_update=True, force_process=None):
                 sge_job_id = run_group_sge_job_id[pen_run_idx]
                 prt(sge_job_id, 'sge_job_id')
 
-                rg_idx = sim_run_idx[pen_run_idx][1]
-                prt(rg_idx, 'rg_idx')
+                rg_idx_str = str(sim_run_idx[pen_run_idx][1])
+                prt(rg_idx_str, 'rg_idx_str')
 
                 r_idx = run_order_id[pen_run_idx]
                 prt(r_idx, 'r_idx')
 
-                stdoe_fn = sim_group.name + '_' + rg_idx + '.{}' + sge_job_id
+                stdoe_fn = sim_group.name + '_' + rg_idx_str + '.{}' + sge_job_id
 
                 if run_group_is_job_arr[pen_run_idx]:
                     stdoe_fn += '.' + r_idx
@@ -166,7 +166,7 @@ def main(sim_group, run_group_idx=None, do_update=True, force_process=None):
                 prt(stdout_fn, 'stdout_fn')
                 prt(stderr_fn, 'stderr_fn')
 
-                stdeo_path = ['run_groups', str(rg_idx), 'sge']
+                stdeo_path = ['run_groups', rg_idx_str, 'sge']
                 prt(stdeo_path, 'stdeo_path')
 
                 stdout_path = stdeo_path + [stdout_fn]
