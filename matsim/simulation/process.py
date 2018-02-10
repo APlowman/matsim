@@ -6,7 +6,7 @@ from matsim.resources import ResourceConnection
 from matsim.utils import prt
 
 
-def main(sim_group, run_group_idx=None):
+def main(sim_group, run_group_idx=None, do_update=True, force_process=None):
     """
     Process a given SimGroup:
     -   Run update to update run states in the database
@@ -22,6 +22,9 @@ def main(sim_group, run_group_idx=None):
     run_group_idx : int, optional
         If set, only process runs belonging to the this run group. Otherwise,
         process all run groups.
+    force_process, list of int, optional
+        List of run indices within specified run group to initially set to 
+        `pending_process` regardless of checking `qstat`.
 
     """
 
@@ -29,10 +32,21 @@ def main(sim_group, run_group_idx=None):
     sg_id = sim_group.db_id
     # prt(sg_id, 'sg_id')
 
-    # Update (SGE) run states in database:
-    update.main()
+    if do_update:
+        # Update (SGE) run states in database:
+        update.main()
 
     sim_group.check_is_scratch_machine()
+
+    if not run_group_idx and force_process:
+        raise ValueError('Must specify `run_group_idx`, if `force_process` is '
+                         'set.')
+
+    if force_process:
+        rg_id = database.get_run_groups(sg_id)[run_group_idx]['id']
+        rg_runs = database.get_run_group_runs(rg_id)
+        force_run_ids = [rg_runs[i]['id'] for i in force_process]
+        database.set_many_run_states(force_run_ids, 6)
 
     # Find all runs belonging to this run group in states 6 "pending_process"
     # or state 8 "process_no_errors" (which normally should only be a transient
