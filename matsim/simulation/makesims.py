@@ -14,8 +14,18 @@ from matsim.simulation.simgroup import SimGroup, SOFTWARE_CLASS_MAP
 def validate_run_group_sim_idx(run_options, num_sims):
     """Validate the user input for the `sim_idx` key of each run group."""
 
-    sim_idx_msg = ('Run group `sim_idx` must be either "all" or a list of '
-                   'integers that index the sims.')
+    sim_idx_msg_1 = ('Run group #{} `sim_idx` must be either "all" or a list of '
+                     'integers that index the sims.')
+    sim_idx_msg_2 = ('Run group #{} `sim_idx` cannot contain repeated '
+                     'indices.')
+    job_arr_msg = ('`job_array` cannot be `True` for a Scratch which is not'
+                   ' SGE')
+    sel_sub_msg_1 = ('`selective_submission` cannot be `True` if `job_array` is'
+                     ' `False`')
+    sel_sub_msg_2 = ('`selective_submission` cannot be `True` for a Scratch '
+                     'which is not SGE, and if `job_array` if `False`.')
+
+    scratch = run_options['scratch']
 
     for rg_idx in range(len(run_options['groups'])):
 
@@ -28,10 +38,36 @@ def validate_run_group_sim_idx(run_options, num_sims):
         elif isinstance(rg_sim_idx, list):
 
             if min(rg_sim_idx) < 0 or max(rg_sim_idx) > (num_sims - 1):
-                raise ValueError(sim_idx_msg)
+                raise ValueError(sim_idx_msg_1.format(rg_idx))
+
+            if len(set(rg_sim_idx)) != len(rg_sim_idx):
+                raise ValueError(sim_idx_msg_2.format(rg_idx))
 
         else:
-            raise ValueError(sim_idx_msg)
+            raise ValueError(sim_idx_msg_1.format(rg_idx))
+
+        # Set/check `job_array` and `selective_submission`:
+        if scratch.sge:
+
+            job_array = run_group.get('job_array',
+                                      len(run_group['sim_idx']) > 1)
+            sel_sub = run_group.get('selective_submission', False)
+
+            if sel_sub is True and not job_array:
+                raise ValueError(sel_sub_msg_1)
+
+        else:
+
+            if run_group.get('job_array') is True:
+                raise ValueError(job_arr_msg)
+            if run_group.get('selective_submission') is True:
+                raise ValueError(sel_sub_msg_2)
+
+            job_array = False
+            sel_sub = False
+
+        run_group['job_array'] = job_array
+        run_group['selective_submission'] = sel_sub
 
 
 def validate_run_options(run_options):

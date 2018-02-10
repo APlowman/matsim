@@ -223,7 +223,7 @@ def write_jobscript(path, calc_paths, method, num_cores, is_sge, job_array, exec
 
 
 def write_process_jobscript(path, job_name, dependency, num_calcs, human_id,
-                            run_group_idx, job_array):
+                            run_group_idx, job_array, selective_submission):
     """Write a job array dependency jobscript to auto-process a run group."""
 
     # Get the template file path
@@ -244,6 +244,13 @@ def write_process_jobscript(path, job_name, dependency, num_calcs, human_id,
 
     job_dep_cmd = 'hold_jid_ad' if job_array else 'hold_jid'
     replace_in_file(js_path, '<replace_with_job_dependancy_cmd>', job_dep_cmd)
+
+    if not job_array:
+        delete_line(js_path, '#$ -t')
+        replace_in_file(js_path, '$(($SGE_TASK_ID - 1))', '0')
+
+    elif selective_submission:
+        delete_line(js_path, '#$ -t')
 
 
 class SimGroup(object):
@@ -543,8 +550,8 @@ class SimGroup(object):
                 'method': self.software_name,
                 'num_cores': run_group['num_cores'],
                 'is_sge': self.scratch.sge,
-                'job_array': False,
-                'selective_submission': False,
+                'job_array': run_group['job_array'],
+                'selective_submission': run_group['selective_submission'],
                 'scratch_os': self.scratch.os_type,
                 'scratch_path': str(rg_path_scratch),
                 'parallel_env': soft_inst['parallel_env'],
@@ -553,19 +560,7 @@ class SimGroup(object):
                 'seedname': 'sim',
                 'executable': soft_inst['executable'],
             }
-
-            if self.scratch.sge:
-                js_params.update({
-                    'job_array': run_group['sge']['job_array'],
-                    'selective_submission': run_group['sge']['selective_submission'],
-                })
-            job_array = write_jobscript(**js_params)
-
-            if self.scratch.sge:
-                # May need to change job_array if specified True by user, but
-                # only one job:
-                # TODO: move this logic to earlier validation step.
-                self.run_options['groups'][rg_idx]['sge']['job_array'] = job_array
+            write_jobscript(**js_params)
 
             if run_group['auto_process'] and self.scratch.sge:
 
@@ -577,7 +572,8 @@ class SimGroup(object):
                     'num_calcs': len(sim_paths_scratch),
                     'human_id': self.human_id,
                     'run_group_idx': rg_idx,
-                    'job_array': job_array,
+                    'job_array': run_group['job_array'],
+                    'selective_submission': run_group['selective_submission'],
                 }
                 write_process_jobscript(**pjs_params)
 
@@ -603,7 +599,7 @@ class SimGroup(object):
         if ask_sub_idx:
             for ask_sub in ask_sub_idx:
                 if utils.confirm('Submit run group #{}?'.format(ask_sub)):
-                    self.submit_run_groups([ask_sub])
+                    self.submit_run_group(ask_sub)
                 else:
                     print('Run group #{} was NOT submitted.'.format(ask_sub))
 
@@ -612,139 +608,162 @@ class SimGroup(object):
 
         if auto_sub_idx:
             print('Auto-submitting run groups: {}'.format(auto_sub_idx))
-            self.submit_run_groups(auto_sub_idx)
+            for rg_idx in auto_sub_idx:
+                self.submit_run_group(rg_idx)
 
-    def submit_run_groups(self, run_group_idx):
-        """Submit one or more run groups on Scratch. Can be invoked either on
-        Stage (for submitting initial runs) or Scratch.
+    def submit_run_group(self, run_group_idx, run_idx=None):
+        """Submit a run groups on Scratch. Can be invoked either on
+        Stage (for submitting initial runs) or Scratch. ?? check this.
 
         Parameters
         ----------
-        run_group_idx : list
-            The indices of the run groups to submit.
+        run_group_idx : int
+            Run group index to submit (order of the run group within the sim
+            group).
+        run_idx : str
+            Run indices (order of runs within run group) to submit in the case
+            this run group has `selective_submission`. Must be in the SGE "-t"
+            option format i.e. "n[-m[:s]]"
 
         """
 
-        conn = ResourceConnection(self.get_machine_resource()[0], self.scratch)
+        run_group = self.run_options['groups'][run_group_idx]
 
+        # Validation
+        if not run_group['selective_submission'] and run_idx is not None:
+            msg = ('`run_idx` should only be supplied to `submit_run_group` '
+                   'if `selective_submission` if True.')
+            raise ValueError(msg)
+
+        if run_group['selective_submission'] and run_idx is None:
+            msg = ('`run_idx` must be supplied to `submit_run_group` '
+                   'if `selective_submission` if True.')
+            raise ValueError(msg)
+
+        conn = ResourceConnection(self.get_machine_resource()[0], self.scratch)
         jobscript_ext = 'sh' if self.scratch.os_type == 'posix' else 'bat'
         jobscript_fn = 'jobscript.{}'.format(jobscript_ext)
 
+        # Get ID in run_group table:
+        rg_id = run_group['db_id']
+
+        submit_time = database.get_run_group(rg_id)['submit_time']
+        if submit_time:
+            msg = 'Run group index: {} was already submitted (at {}).'
+            raise ValueError(msg.format(run_group_idx, submit_time))
+
         sub_msg = ('Submitting run group: {}')
-        for rg_idx in run_group_idx:
+        print(sub_msg.format(run_group_idx))
 
-            run_group = self.run_options['groups'][rg_idx]
+        rg_path = '/'.join(['run_groups', str(run_group_idx)])
 
-            # Get ID in run_group table:
-            rg_id = run_group['db_id']
+        if self.scratch.sge:
+            cmd = ['qsub']
+            if run_idx:
+                cmd.append('-t {}'.format(run_idx))
+            cmd.append('{}'.format(jobscript_fn))
 
-            submit_time = database.get_run_group(rg_id)['submit_time']
-            if submit_time:
-                msg = 'Run group index: {} was already submitted (at {}).'
-                raise ValueError(msg.format(rg_idx, submit_time))
+        else:
+            cmd = [jobscript_fn]
 
-            print(sub_msg.format(rg_idx))
+        # Execute command to get the hostname on Scratch:
+        hostname = conn.run_command(['hostname'], block=True)
 
-            rg_path = '/'.join(['run_groups', str(rg_idx)])
+        # Execute command to submit the jobscript:
+        submit_proc = conn.run_command(cmd, cwd=rg_path, block=False)
+
+        # Get approximate time of execution, in a MySQL format:
+        dt_fmt = '%Y-%m-%d %H:%M:%S'
+        submit_time = datetime.strftime(datetime.now(), dt_fmt)
+
+        # Update the database:
+        # Set run state to 3 "in_queue" or 5 "running" (if not SGE)
+        run_state_id = 3 if self.scratch.sge else 5
+        database.set_run_group_submitted(
+            rg_id, hostname, submit_time, run_state_id)
+
+        # Check if submit process has ended:
+        if self.scratch.sge:
+            msg = 'Submitting to SGE - PENDING'
+            msg_done = 'Submitting to SGE - DONE'
+        else:
+            msg = 'Running sims - PENDING'
+            msg_done = 'Running sims - DONE'
+
+        print(msg)
+
+        while True:
+            if submit_proc.poll() is not None:
+                break
+            time.sleep(0.5)
+
+        # At this point either the simulations have been run, or
+        # submitted (if SGE).
+
+        with submit_proc.stdout as submit_out:
+            submit_stdout = submit_out.read()
+
+        with submit_proc.stderr as submit_err:
+            submit_stderr = submit_err.read()
+
+        if not submit_stderr:
+            print(msg_done)
+
+        else:
+            msg = 'There was a problem with job submission: \n\n\t{}\n'
+            raise ValueError(msg.format(submit_stderr))
+
+        if self.scratch.sge:
+            # Get the Job-ID from the submit return
+            job_id_task_id = submit_stdout.split()[2]
+            job_id = int(job_id_task_id.split('.')[0])
+            database.set_run_group_sge_jobid(rg_id, job_id)
+
+        else:
+            # Set run_states to 6 "pending_process":
+            database.set_all_run_states(rg_id, 6)
+
+        if run_group['auto_process']:
 
             if self.scratch.sge:
-                cmd = ['qsub', '{}'.format(jobscript_fn)]
-            else:
-                cmd = [jobscript_fn]
 
-            # Execute command to get the hostname on Scratch:
-            hostname = conn.run_command(['hostname'], block=True)
+                # Execute command to submit the process jobscript:
 
-            # Execute command to submit the jobscript:
-            submit_proc = conn.run_command(cmd, cwd=rg_path, block=False)
+                cmd = ['qsub']
+                if run_idx:
+                    cmd.append('-t {}'.format(run_idx))
+                cmd.append('process_jobscript.sh')
 
-            # Get approximate time of execution, in a MySQL format:
-            dt_fmt = '%Y-%m-%d %H:%M:%S'
-            submit_time = datetime.strftime(datetime.now(), dt_fmt)
+                submit_process_proc = conn.run_command(
+                    cmd, cwd=rg_path, block=False)
 
-            # Update the database:
-            # Set run state to 3 "in_queue" or 5 "running" (if not SGE)
-            run_state_id = 3 if self.scratch.sge else 5
-            database.set_run_group_submitted(
-                rg_id, hostname, submit_time, run_state_id)
+                msg = 'Submitting process job to SGE - PENDING {}\r'
+                msg_done = 'Submitting process job to SGE - COMPLETE '
+                print(msg)
+                while True:
+                    if submit_process_proc.poll() is not None:
+                        break
+                    time.sleep(0.1)
 
-            # Check if submit process has ended:
-            if self.scratch.sge:
-                msg = 'Submitting to SGE - PENDING'
-                msg_done = 'Submitting to SGE - DONE'
-            else:
-                msg = 'Running sims - PENDING'
-                msg_done = 'Running sims - DONE'
+                # At this point either the simulations have been run, or
+                # submitted (if SGE).
 
-            print(msg)
+                with submit_process_proc.stdout as submit_out:
+                    submit_stdout = submit_out.read()
 
-            while True:
-                if submit_proc.poll() is not None:
-                    break
-                time.sleep(0.5)
+                with submit_process_proc.stderr as submit_err:
+                    submit_stderr = submit_err.read()
 
-            # At this point either the simulations have been run, or
-            # submitted (if SGE).
-
-            with submit_proc.stdout as submit_out:
-                submit_stdout = submit_out.read()
-
-            with submit_proc.stderr as submit_err:
-                submit_stderr = submit_err.read()
-
-            if not submit_stderr:
-                print(msg_done)
-
-            else:
-                msg = 'There was a problem with job submission: \n\n\t{}\n'
-                raise ValueError(msg.format(submit_stderr))
-
-            if self.scratch.sge:
-                # Get the Job-ID from the submit return
-                job_id_task_id = submit_stdout.split()[2]
-                job_id = int(job_id_task_id.split('.')[0])
-                database.set_run_group_sge_jobid(rg_id, job_id)
-
-            else:
-                # Set run_states to 6 "pending_process":
-                database.set_all_run_states(rg_id, 6)
-
-            if run_group['auto_process']:
-
-                if self.scratch.sge:
-
-                    # Execute command to submit the process jobscript:
-                    cmd = ['qsub', 'process_jobscript.sh']
-                    submit_process_proc = conn.run_command(
-                        cmd, cwd=rg_path, block=False)
-
-                    msg = 'Submitting process job to SGE - PENDING {}\r'
-                    msg_done = 'Submitting process job to SGE - COMPLETE '
-                    print(msg)
-                    while True:
-                        if submit_process_proc.poll() is not None:
-                            break
-                        time.sleep(0.1)
-
-                    # At this point either the simulations have been run, or
-                    # submitted (if SGE).
-
-                    with submit_process_proc.stdout as submit_out:
-                        submit_stdout = submit_out.read()
-
-                    with submit_process_proc.stderr as submit_err:
-                        submit_stderr = submit_err.read()
-
-                    if not submit_stderr:
-                        print(msg_done)
-
-                    else:
-                        msg = ('There was a problem with process job '
-                               'submission: \n\n\t{}\n')
-                        raise ValueError(msg.format(submit_stderr))
+                if not submit_stderr:
+                    print(msg_done)
 
                 else:
-                    process.main(self, rg_idx)
+                    msg = ('There was a problem with process job '
+                           'submission: \n\n\t{}\n')
+                    raise ValueError(msg.format(submit_stderr))
+
+            else:
+                process.main(self, run_group_idx)
 
     def copy_to_scratch(self):
         """Copy group from Stage to Scratch."""

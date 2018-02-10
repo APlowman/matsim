@@ -1341,9 +1341,9 @@ def add_run_group(sim_group_id, run_group, sim_insert_ids, run_state, sge,
         )
         rg_sge_insert_id = exec_insert(sql_sge, (
             rg_insert_id,
-            run_group['sge']['job_array'],
-            run_group['sge']['selective_submission'],
-            run_group['sge'].get('resource_flag')
+            run_group['job_array'],
+            run_group['selective_submission'],
+            run_group.get('resource_flag')
         ))
 
     # Add to the run table

@@ -151,13 +151,13 @@ def main(sim_group, run_group_idx=None, do_update=True, force_process=None):
                 rg_idx_str = str(sim_run_idx[pen_run_idx][1])
                 prt(rg_idx_str, 'rg_idx_str')
 
-                r_idx = run_order_id[pen_run_idx]
-                prt(r_idx, 'r_idx')
-
                 stdoe_fn = sim_group.name + '_' + rg_idx_str + '.{}' + sge_job_id_str
 
                 if run_group_is_job_arr[pen_run_idx]:
-                    stdoe_fn += '.' + r_idx
+                    r_idx_str = str(run_order_id[pen_run_idx])
+                    prt(r_idx_str, 'r_idx_str')
+
+                    stdoe_fn += '.' + r_idx_str
 
                 stdout_fn = stdoe_fn.format('o')
                 stderr_fn = stdoe_fn.format('e')

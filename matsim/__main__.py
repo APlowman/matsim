@@ -19,10 +19,12 @@ def main(args=sys.argv[1:]):
             'process=',
             'force-process=',
             'run-group=',
+            'run_idx=',
             'update',
-            'no-update'
+            'no-update',
+            'add-run-group'
         ]
-        opts, args = getopt.getopt(args, 'ml:s:p:f:r:u', long_args)
+        opts, args = getopt.getopt(args, 'ml:s:p:f:r:i:ua', long_args)
 
     except getopt.GetoptError:
         print('Error parsing arguments: {}'.format(args))
@@ -64,16 +66,19 @@ def main(args=sys.argv[1:]):
 
         hid = opts[0][1]
         run_group_idx = None
+        run_idx = None
         for opt, arg in opts:
             if opt in ('-r', '--run-group'):
                 run_group_idx = int(arg)
+            if opt in ('-i', '--run-index'):
+                run_idx = arg
 
         if run_group_idx is None:
             raise ValueError('Must specify `run_group_idx` using option: `-r`'
                              ' or `--run-group`.')
 
         sim_group = SimGroup.load_state(hid, 'stage')
-        sim_group.submit_run_groups([run_group_idx])
+        sim_group.submit_run_group(run_group_idx, run_idx=run_idx)
 
     elif opts[0][0] in ('-p', '--process'):
 
