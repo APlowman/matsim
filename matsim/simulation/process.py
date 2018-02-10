@@ -118,14 +118,17 @@ def main(sim_group, run_group_idx=None, do_update=True, force_process=None):
         sim_group.save_state('scratch')
 
         if not database.check_archive_started(sg_id):
-            # Copy everything to archive apart from calcs directory:
-            arch_conn.copy_to_dest(ignore=['calcs'])
+            # Copy everything to archive apart from calcs directory and SGE
+            # log files:
+            arch_conn.copy_to_dest(ignore=['calcs', 'sge'])
             database.set_archive_started(sg_id)
 
         else:
-            # Copy updated sim_group.json
+            # Copy updated sim_group.json (and backup old one on archive)
             subpath = ['sim_group.json']
             arch_conn.copy_to_dest(subpath=subpath, file_backup=True)
+
+            # Copy run_groups/<run_group_idx>/output
 
         archived_ids = []
         for pen_run_idx in no_errs_pen_idx:
