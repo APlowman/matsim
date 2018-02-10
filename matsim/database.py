@@ -1217,11 +1217,13 @@ def get_sim_group_runs(sim_group_id, states=None, user_cred=None):
 
     sql = (
         'select r.*, s.order_id "sim_order_id", '
-        'rg.order_id "run_group_order_id" '
+        'rg.order_id "run_group_order_id", rgsge.job_id "sge_job_id", '
+        'rgsge.is_job_array "sge_job_array" '
         'from run_group rg '
         'inner join sim_group sg on sg.id = rg.sim_group_id '
         'inner join run r on r.run_group_id = rg.id '
         'inner join sim s on s.id = r.sim_id '
+        'inner join run_group_sge rgsge on rgsge.run_group_id = rg.id '
         'where sg.id = %s and '
         'sg.user_account_id = %s'
     )
