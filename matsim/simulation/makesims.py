@@ -176,9 +176,20 @@ def main(options):
     sim_group.save_state('stage')
 
     # Copy to scratch
-    do_copy = sim_group.copy_to_scratch()
+    copy_scratch = sim_group.run_options['copy_to_scratch']
+    do_copy = False
+    if copy_scratch == 'ask':
+        if utils.confirm('Copy sim group to scratch?'):
+            do_copy = True
+    elif copy_scratch is True:
+        do_copy = True
 
-    if do_copy:
+    if not do_copy:
+        print('Sim group was NOT copied to scratch.')
+
+    else:
+        sim_group.copy_to_scratch()
+
         # Submit initial run groups on scratch
         sim_group.auto_submit_initial_runs()
 
