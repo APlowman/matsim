@@ -38,7 +38,7 @@ def main(sim_group, run_group_idx=None, do_update=True, force_process=None):
 
     sim_group.check_is_scratch_machine()
 
-    if run_group_idx is not None and force_process:
+    if run_group_idx is None and force_process:
         raise ValueError('Must specify `run_group_idx`, if `force_process` is '
                          'set.')
 
