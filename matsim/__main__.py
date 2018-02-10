@@ -66,7 +66,7 @@ def main(args=sys.argv[1:]):
         run_group_idx = None
         for opt, arg in opts:
             if opt in ('-r', '--run-group'):
-                run_group_idx = arg
+                run_group_idx = int(arg)
         sim_group = SimGroup.load_state(hid, 'stage')
         sim_group.submit_run_groups([run_group_idx])
 
@@ -83,7 +83,7 @@ def main(args=sys.argv[1:]):
             if opt == '--no-update':
                 do_update = False
             if opt in ('-r', '--run-group'):
-                run_group_idx = arg
+                run_group_idx = int(arg)
             if opt in ('-f', '--force-process'):
                 force_process_run_idx = [int(i) for i in arg.split(',')]
 
