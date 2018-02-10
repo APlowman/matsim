@@ -7,9 +7,9 @@
 #$ -o output/
 #$ -e output/
 #$ -t <replace_with_job_index_range>
-#$ -hold_jid_ad <replace_with_run_group_job_name>
+#$ -hold_jid_ad <replace_with_run_group_job_name>_<replace_with_run_group_idx>
 
 # Run process for this sim group, and run group idx, after each run finishes:
 source activate matsim
-matsim --process <replace_with_sim_group_human_id> --run_group <replace_with_run_group_idx> --force-process $SGE_TASK_ID
+matsim --process <replace_with_sim_group_human_id> --run_group <replace_with_run_group_idx> --no-update --force-process $SGE_TASK_ID
 source deactivate
