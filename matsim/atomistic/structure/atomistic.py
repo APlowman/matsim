@@ -336,9 +336,107 @@ class AtomisticStructure(object):
         Parameters
         ----------
         point_defects : list of PointDefect objects
+        
+        TODO:
+        * Validate point_defects
+            - check if more than one defect with the same index
 
         """
-        pass
+        species = self.atom_labels['species'][0]
+        species_idx = self.atom_labels['species'][1]
+        species_count = self.atom_labels['species_count'][0]
+        species_count_idx = self.atom_labels['species_count'][1]
+        if -9999 not in species_count:
+            species_count = np.append(species_count, -9999)
+        crystal = self.atom_labels['crystal_idx'][0]
+        crystal_idx = self.atom_labels['crystal_idx'][1]
+
+        if 'bulk_coord_number' in self.atom_labels:
+            bulk_coord_num = self.atom_labels['bulk_coord_number'][0]
+            bulk_coord_num_idx = self.atom_labels['bulk_coord_number'][1]
+            if -9999 not in bulk_coord_num:
+                bulk_coord_num = np.append(bulk_coord_num, -9999)
+       
+        if 'charge' in self.atom_labels:
+            charge = self.atom_labels['charge'][0]
+            charge_idx = self.atom_labels['charge'][1]
+
+        if self.interstice_labels:
+            interstice = self.interstice_labels['type'][0]
+            interstice_idx = self.interstice_labels['type'][1]
+            interstice_occ = self.interstice_labels['is_occupied'][0]
+            interstice_occ_idx = self.interstice_labels['is_occupied'][1]
+            interstice_crys = self.interstice_labels['crystal_idx'][0]
+            interstice_crys_idx = self.interstice_labels['crystal_idx'][1]
+                    
+        for pd in point_defects:
+
+            if pd.defect_species.lower() != 'v' and pd.host_species != 'i':
+                # Atoms
+                if pd.defect_species not in species:
+                    species = np.append(species, pd.defect_species)
+                species_idx[pd.index] = np.where(species == pd.defect_species)[0][0]                 
+                species_count_idx[pd.index] = np.where(species_count == -9999)[0][0]
+                if 'bulk_coord_number' in self.atom_labels:
+                    bulk_coord_num_idx[index] = np.where(bulk_coord_num == -9999)[0][0]
+                if 'charge' in self.atom_labels:
+                    rel_charge = pd.charge
+                    # abs_charge (current) - prev_charge = rel_charge
+                    abs_charge = charge[charge_idx[pd.index]] + rel_charge
+
+                    if abs_charge not in charge:
+                        charge = np.append(charge, abs_charge)
+                    charge_idx[pd.index] = np.where(charge == abs_charge)[0][0]
+
+                # Interstices - no changes
+                
+            if pd.host_species.lower() == 'i':
+                # Atoms
+                self.atom_sites = np.append(self.atom_sites, self.interstice_sites[:, pd.index][:,np.newaxis], axis=1)
+                if pd.defect_species not in species:
+                    species = np.append(species, pd.defect_species)
+                species_idx = np.append(species_idx, np.where(species==pd.defect_species)[0][0])
+                species_count_idx = np.append(species_count_idx, np.where(species_count == -9999)[0][0])
+                crystal_idx = np.append(crystal_idx, interstice_crys_idx[pd.index])
+                if 'bulk_coord_number' in self.atom_labels:
+                    bulk_coord_num_idx = np.append(bulk_coord_num_idx, np.where(bulk_coord_num == -9999)[0][0])
+                if 'charge' in self.atom_labels:
+                    rel_charge = pd.charge
+                    abs_charge = 0 + rel_charge
+                    if abs_charge not in charge:
+                        charge = np.append(charge, abs_charge)
+                    charge_idx = np.append(charge_idx, np.where(charge == abs_charge)[0][0])
+                
+                # Interstices
+                interstice_occ_idx[pd.index] = np.where(interstice_occ == True)[0][0]
+            
+            if pd.defect_species.lower() == 'v':
+                # Atoms
+                self.atom_sites = np.delete(self.atom_sites, pd.index, axis=1)
+                species_idx = np.delete(species_idx, pd.index)
+                species_count_idx = np.delete(species_count_idx, pd.index)
+                crystal_idx = np.delete(crystal_idx, pd.index)
+                if 'bulk_coord_number' in self.atom_labels:
+                    bulk_coord_num_idx = np.delete(bulk_coord_num_idx, pd.index)
+                if 'charge' in self.atom_labels:
+                    charge_idx = np.delete(charge_idx, pd.index)
+
+                # Interstices - no changes
+                
+        # Update atom_labels and interstices_labels dicts    
+        self.atom_labels.update({
+                'species': (species, species_idx),
+                'species_count': (species_count, species_count_idx),
+                'crystal_idx': (crystal, crystal_idx)
+            })
+        if 'bulk_coord_number' in self.atom_labels:
+            self.atom_labels.update({
+                'bulk_coord_number': (bulk_coord_num, bulk_coord_num_idx),
+            })
+        if 'charge' in self.atom_labels:
+            self.atom_labels.update({
+                'charge': (charge, charge_idx),
+            })
 
     def add_atom(self, coords, species, crystal_idx, is_frac_coords=False):
         """Add an atom to the structure."""
@@ -912,5 +1010,5 @@ class PointDefect(object):
     def __repr__(self):
         return ('PointDefect({!r}, {!r}, index={!r}, charge={!r}, '
                 'interstice_type={!r})').format(
-                    self.defect_species, self.atom_site, self.index, self.charge,
+                    self.defect_species, self.host_species, self.index, self.charge,
                     self.interstice_type)
