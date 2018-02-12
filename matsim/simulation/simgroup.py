@@ -17,7 +17,7 @@ import jsonpickle.ext.numpy as jsonpickle_numpy
 jsonpickle_numpy.register_handlers()
 
 from matsim import (JS_TEMPLATE_DIR, utils, parse_opt, CONFIG, DB_CONFIG,
-                    database, OPTSPEC)
+                    database as dbs, OPTSPEC)
 from matsim.simulation import BaseUpdate, apply_base_update
 from matsim.simulation import process
 from matsim.simulation.sequence import SimSequence
@@ -283,7 +283,7 @@ class SimGroup(object):
     }
 
     def __init__(self, base_sim_options, run_options, path_options, sim_updates,
-                 sequences, human_id, name, sims=None, db_id=None,
+                 sequences, human_id, name, sims=None, dbid=None,
                  vis_options=None):
         """Initialise a SimGroup object."""
 
@@ -297,22 +297,17 @@ class SimGroup(object):
         self.name = name
         self.sims = sims
 
-        self.software_name = run_options['software_name']
+        self.software = run_options['software']
         self.stage = run_options.pop('stage')
         self.scratch = run_options.pop('scratch')
         self.archive = run_options.pop('archive')
 
-        self.db_id = db_id
+        self.dbid = dbid
 
     @property
     def num_sims(self):
         """Return the number of simulations in this group."""
         return len(self.sim_updates)
-
-    @property
-    def sim_class(self):
-        """Get the Simulation class associated with this group."""
-        return SOFTWARE_CLASS_MAP[self.software_name]
 
     @property
     def sequence_lengths(self):
@@ -381,24 +376,43 @@ class SimGroup(object):
             for upd in sim_upds:
                 sim_opt = apply_base_update(sim_opt, upd)
 
-            sims.append(self.sim_class(sim_opt))
+            sim = SOFTWARE_CLASS_MAP[self.software](sim_opt)
+            sims.append(sim)
 
         print('Generating Simulation objects -- DONE')
         self.sims = sims
 
     @classmethod
-    def load_state(cls, human_id, resource_type):
+    def load_state(cls, human_id, resource_type=None):
         """Load from database/JSON file representing a SimGroup object.
 
         Parameters
         ----------
         resource_type : str
-            One of: "stage", "scratch".
+            One of: "stage", "scratch", "archive", determines where to load the
+            JSON file from. By default, the sim_group_state will be checked. If
+            state is 1 "on_stage_initial" or 2 "on_stage_run_groups", 
+            resource_type is set to "stage"; if state is 3, 4, or 5,
+            resource_type is set to "scratch".
 
         """
 
         # First get info from database
-        sg_params = database.get_sim_group(human_id)
+        sg_params = dbs.get_sim_group_by_human_id(human_id)
+
+        prt(sg_params, 'sg_params')
+
+        if not resource_type:
+
+            sg_state_id = dbs.get_sim_group_state_id(sg_params['id'])
+
+            if sg_state_id in [1, 2]:
+                resource_type = 'stage'
+            elif sg_state_id in [3, 4, 5]:
+                resource_type = 'scratch'
+
+        # Get sim IDs from database as well:
+        sims_db = dbs.get_sim_group_sims(sg_params['id'])
 
         # Instantiate resource objects:
         stage_name = sg_params['run_opt'].pop('stage')['name']
@@ -443,8 +457,12 @@ class SimGroup(object):
             'run_options': sg_params['run_opt'],
             'human_id': sg_params['human_id'],
             'name': sg_params['name'],
-            'db_id': sg_params['db_id'],
+            'dbid': sg_params['id'],
         }
+
+        # Reset sim IDs from database, rather than relying on JSON file.
+        for sim_idx, _ in enumerate(state['sims']):
+            state['sims'][sim_idx].dbid = sims_db[sim_idx]['id']
 
         return cls(**state)
 
@@ -482,10 +500,13 @@ class SimGroup(object):
 
         return all_plot_paths
 
-    def write_initial_runs(self):
-        """Write input files on stage."""
+    def initialise(self):
+        """Write helper files on stage and add sim group to database."""
 
-        if self.sims is not None:
+        # Check if this sim group is in database
+        prt(dbs.get_sim_group_state_id(self.human_id),
+            'dbs.get_sim_group_state_id(self.human_id)')
+        if dbs.get_sim_group_state_id(self.human_id) is not False:
             raise ValueError('Simulations have already been generated for this'
                              ' SimGroup object.')
 
@@ -494,7 +515,7 @@ class SimGroup(object):
             raise ValueError('This machine does not have the same name as that '
                              'of the Stage associated with this SimGroup.')
 
-        print('Writing simulation inputs -- PENDING')
+        print('Writing initial files -- PENDING')
 
         stage_path = self.stage.path
         scratch_path = self.scratch.path
@@ -503,81 +524,121 @@ class SimGroup(object):
         # Copy makesims input file:
         shutil.copy2(CONFIG['option_paths']['makesims'], stage_path)
 
-        sim_params = self.base_sim_options['params'][self.software_name]
+        sim_params = self.base_sim_options['params'][self.software]
 
-        self.sim_class.copy_reference_data(
+        SOFTWARE_CLASS_MAP[self.software].copy_reference_data(
             sim_params, stage_path, scratch_path)
 
         self.generate_sim_group_sims()
         self._all_plot_paths = self.make_visualisations()
 
-        for sim_idx, _ in enumerate(self.sims):
-            self.sims[sim_idx].runs = [
-                {'result': None, }
-                for _ in range(len(self.run_options['groups']))]
+        print('Writing initial files -- DONE')
 
-        # Loop through each requested run group:
-        for rg_idx, run_group in enumerate(self.run_options['groups']):
+        print('Adding SimGroup to the database -- PENDING')
+        dbs.add_sim_group(self)
+        print('Adding SimGroup to the database -- DONE')
+        prt(self.dbid, 'self.dbid')
 
-            prt(rg_idx, 'rg_idx')
+        self.save_state('stage')
 
-            # Loop over each simulation in this run group
-            sim_paths_stage = []
-            sim_paths_scratch = []
-            soft_inst = run_group['software_instance']
-            for sim_idx in run_group['sim_idx']:
+    def _validate_run_group_defn(self, rg_defn):
+        """Validate a run group options dict."""
 
-                run_path = self.get_run_path(sim_idx, rg_idx)
-                sm_pth_stg = stage_path.joinpath(*run_path)
-                sm_pth_sct = scratch_path.joinpath(*run_path)
-                sim_paths_stage.append(sm_pth_stg)
-                sim_paths_scratch.append(str(sm_pth_sct))
+        msg_soft_1 = (
+            'Software instance "{}" is not allowed on scratch "{}"'
+        )
+        msg_soft_2 = (
+            'Invalid software instances "{}", since this does not use '
+            'software "{}"'
+        )
+        msg_invalid_cores = (
+            '{} core(s) is not supported on the specified software instance.'
+        )
+        sim_idx_msg_1 = (
+            'Run group `sim_idx` must be either "all" or a list of '
+            'integers that index the sims.'
+        )
+        sim_idx_msg_2 = (
+            'Run group `sim_idx` cannot contain repeated indices.'
+        )
+        job_arr_msg = (
+            '`job_array` cannot be `True` for a Scratch which is not SGE'
+        )
+        sel_sub_msg_1 = (
+            '`selective_submission` cannot be `True` if `job_array` is `False`'
+        )
+        sel_sub_msg_2 = (
+            '`selective_submission` cannot be `True` for a Scratch which is '
+            'not SGE, and if `job_array` if `False`.'
+        )
+        sel_sub_msg_3 = (
+            '`auto_submit` cannot be `True` or `ask` if `selective_submission`'
+            ' is `True`.'
+        )
 
-                print('write sim_idx: {}'.format(sim_idx))
+        soft_inst_name = rg_defn['software_instance']
+        soft_inst = dbs.get_software_instance_by_name(soft_inst_name)
 
-                # Write simulation input files:
-                self.sims[sim_idx].write_input_files(str(sm_pth_stg))
+        # Check software instance has correct software name:
+        rg_software_name = soft_inst['software_name']
+        if rg_software_name != self.software:
+            raise ValueError(msg_soft_2.format(soft_inst_name, self.software))
 
-            # Write supporting files: jobscript, dirlist, options records
-            rg_path = ['run_groups', str(rg_idx)]
-            rg_path_stage = stage_path.joinpath(*rg_path)
-            rg_path_scratch = scratch_path.joinpath(*rg_path)
-            rg_path_stage.mkdir(parents=True)
+        # Check software instance is allowed on this scratch:
+        ok_scratch_ids = dbs.get_software_instance_ok_scratch(soft_inst_name)
+        if self.scratch.scratch_id not in ok_scratch_ids:
+            raise ValueError(msg_soft_1.format(
+                soft_inst_name, self.scratch.name))
 
-            js_params = {
-                'path': str(rg_path_stage),
-                'calc_paths': sim_paths_scratch,
-                'method': self.software_name,
-                'num_cores': run_group['num_cores'],
-                'is_sge': self.scratch.sge,
-                'job_array': run_group['job_array'],
-                'selective_submission': run_group['selective_submission'],
-                'scratch_os': self.scratch.os_type,
-                'scratch_path': str(rg_path_scratch),
-                'parallel_env': soft_inst['parallel_env'],
-                'module_load': soft_inst['module_load'],
-                'job_name': '{}_{}'.format(self.name, rg_idx),
-                'seedname': 'sim',
-                'executable': soft_inst['executable'],
-            }
-            write_jobscript(**js_params)
+        # Replace the name of the software instance with the software instance
+        # dict from the database:
+        rg_defn['software_instance'] = soft_inst
 
-            if run_group['auto_process'] and self.scratch.sge:
+        # Validate `num_cores`:
+        ncores = rg_defn['num_cores']
+        cores_good = soft_inst['min_cores'] <= ncores <= soft_inst['max_cores']
+        if not cores_good:
+            raise ValueError(msg_invalid_cores.format(ncores))
 
-                # Add process jobscript:
-                pjs_params = {
-                    'path': str(rg_path_stage),
-                    'job_name': 'p_' + self.name[2:],
-                    'dependency': self.name,
-                    'num_calcs': len(sim_paths_scratch),
-                    'human_id': self.human_id,
-                    'run_group_idx': rg_idx,
-                    'job_array': run_group['job_array'],
-                    'selective_submission': run_group['selective_submission'],
-                }
-                write_process_jobscript(**pjs_params)
+        # Validate `sim_idx`
+        rg_sim_idx = rg_defn['sim_idx']
 
-        print('Writing simulation inputs -- DONE')
+        if rg_sim_idx == 'all':
+            rg_defn['sim_idx'] = list(range(self.num_sims))
+
+        elif isinstance(rg_sim_idx, list):
+
+            if min(rg_sim_idx) < 0 or max(rg_sim_idx) > (self.num_sims - 1):
+                raise ValueError(sim_idx_msg_1)
+
+            if len(set(rg_sim_idx)) != len(rg_sim_idx):
+                raise ValueError(sim_idx_msg_2)
+
+        else:
+            raise ValueError(sim_idx_msg_1)
+
+        # Validate `job_array` and `selective_submission`:
+        if self.scratch.sge:
+
+            job_array = rg_defn.get('job_array', len(rg_defn['sim_idx']) > 1)
+            sel_sub = rg_defn.get('selective_submission', False)
+            if sel_sub is True and not job_array:
+                raise ValueError(sel_sub_msg_1)
+
+        else:
+            if rg_defn.get('job_array') is True:
+                raise ValueError(job_arr_msg)
+            if rg_defn.get('selective_submission') is True:
+                raise ValueError(sel_sub_msg_2)
+
+            job_array = False
+            sel_sub = False
+
+        if sel_sub and rg_defn['auto_submit'] in [True, 'ask']:
+            raise NotImplementedError(sel_sub_msg_3)
+
+        rg_defn['job_array'] = job_array
+        rg_defn['selective_submission'] = sel_sub
 
     def auto_submit_initial_runs(self):
         """Submit initial runs according the the run group flag `auto_submit`"""
@@ -610,6 +671,142 @@ class SimGroup(object):
             print('Auto-submitting run groups: {}'.format(auto_sub_idx))
             for rg_idx in auto_sub_idx:
                 self.submit_run_group(rg_idx)
+
+    def add_run_group(self, run_group_defn):
+        """Add a run group to the sim group.
+
+        Parameters
+        ----------
+        run_group_defn : dict with keys:
+            sim_idx : list of int or str
+                Indexes simulations to include in this run group.
+            software_instance : str
+                Name of software instance.
+            num_cores : int
+            auto_submit: bool or str
+                If True, submit this run group immediately. If False, do not submit.
+                If "ask", provide a prompt to ask whether to submit.
+            auto_process : bool
+                If True, automatically process this run group after jobs complete.
+            job_array : bool
+                If True, submit runs as a job array.
+            selective_submission : bool
+                If True, allow submitting the runs in this run group selectively.
+
+        """
+
+        self._validate_run_group_defn(run_group_defn)
+
+        # Find the new order for the new run group (within the sim group):
+        order_in_sim_group = dbs.get_count_sim_group_run_groups(self.dbid)
+
+        # Get resource type
+        sg_state_id = dbs.get_sim_group_state_id(self.human_id)
+        prt(sg_state_id, 'sg_state_id')
+        if sg_state_id in [1, 2]:
+            resource_type = 'stage'
+        elif sg_state_id in [3, 4, 5]:
+            resource_type = 'scratch'
+
+        stage_path = self.stage.path
+        scratch_path = self.scratch.path
+        sim_paths_stage = []
+        sim_paths_scratch = []
+        sim_dbids = []
+        run_order_in_sims = []
+
+        # Add to the simulation runs list:
+        for idx, sim_idx in enumerate(run_group_defn['sim_idx']):
+
+            sim = self.sims[sim_idx]
+            run_order_in_sim = len(sim.runs)
+            run_order_in_sims.append(run_order_in_sim)
+            sim_run_defn = {
+                'run_group_order_in_sim_group': order_in_sim_group,
+                'run_order_in_run_group': idx,
+                'run_order_in_sim': run_order_in_sim,
+                'run_params': run_group_defn['run_params'],
+                'result': None
+            }
+            sim.runs.append(sim_run_defn)
+
+            run_path = self.get_run_path(sim_idx, order_in_sim_group)
+            sm_pth_stg = stage_path.joinpath(*run_path)
+            sm_pth_sct = scratch_path.joinpath(*run_path)
+            sim_paths_stage.append(sm_pth_stg)
+            sim_paths_scratch.append(str(sm_pth_sct))
+            sim_dbids.append(sim.dbid)
+
+            if resource_type == 'stage':
+                input_path = sm_pth_stg
+            elif resource_type == 'scratch':
+                input_path = sm_pth_sct
+
+            # Write simulation input files:
+            self.sims[sim_idx].write_input_files(
+                run_order_in_sim, str(input_path))
+
+        # Write supporting files: jobscript, dirlist, options records
+        rg_path = ['run_groups', str(order_in_sim_group)]
+        rg_path_stage = stage_path.joinpath(*rg_path)
+        rg_path_scratch = scratch_path.joinpath(*rg_path)
+
+        if resource_type == 'stage':
+            rg_path_resource = rg_path_stage
+        elif resource_type == 'scratch':
+            rg_path_resource = rg_path_scratch
+
+        rg_path_resource.mkdir(parents=True)
+
+        soft_inst = run_group_defn['software_instance']
+        js_params = {
+            'path': str(rg_path_resource),
+            'calc_paths': sim_paths_scratch,
+            'method': self.software,
+            'num_cores': run_group_defn['num_cores'],
+            'is_sge': self.scratch.sge,
+            'job_array': run_group_defn['job_array'],
+            'selective_submission': run_group_defn['selective_submission'],
+            'scratch_os': self.scratch.os_type,
+            'scratch_path': str(rg_path_scratch),
+            'parallel_env': soft_inst['parallel_env'],
+            'module_load': soft_inst['module_load'],
+            'job_name': '{}_{}'.format(self.name, order_in_sim_group),
+            'seedname': 'sim',
+            'executable': soft_inst['executable'],
+        }
+        write_jobscript(**js_params)
+
+        if run_group_defn['auto_process'] and self.scratch.sge:
+
+            # Add process jobscript:
+            pjs_params = {
+                'path': str(rg_path_resource),
+                'job_name': 'p_' + self.name[2:],
+                'dependency': self.name,
+                'num_calcs': len(sim_paths_scratch),
+                'human_id': self.human_id,
+                'run_group_idx': order_in_sim_group,
+                'job_array': run_group_defn['job_array'],
+                'selective_submission': run_group_defn['selective_submission'],
+            }
+            write_process_jobscript(**pjs_params)
+
+        # Add run group to the database:
+        if resource_type == 'stage':
+            run_state = 1
+        elif resource_type == 'scratch':
+            run_state = 2
+
+        rg_db = dbs.add_run_group(self.dbid, run_group_defn, sim_dbids,
+                                  run_order_in_sims, run_state,
+                                  self.scratch.sge)
+        run_group_defn.update({
+            'dbid': rg_db[0]
+        })
+
+        # Add to the run groups list:
+        self.run_options['groups'].append(run_group_defn)
 
     def submit_run_group(self, run_group_idx, run_idx=None):
         """Submit a run groups on Scratch. Can be invoked either on
@@ -645,9 +842,9 @@ class SimGroup(object):
         jobscript_fn = 'jobscript.{}'.format(jobscript_ext)
 
         # Get ID in run_group table:
-        rg_id = run_group['db_id']
+        rg_id = run_group['dbid']
 
-        submit_time = database.get_run_group(rg_id)['submit_time']
+        submit_time = dbs.get_run_group(rg_id)['submit_time']
         if submit_time:
             msg = 'Run group index: {} was already submitted (at {}).'
             raise ValueError(msg.format(run_group_idx, submit_time))
@@ -679,7 +876,7 @@ class SimGroup(object):
         # Update the database:
         # Set run state to 3 "in_queue" or 5 "running" (if not SGE)
         run_state_id = 3 if self.scratch.sge else 5
-        database.set_run_group_submitted(
+        dbs.set_run_group_submitted(
             rg_id, hostname, submit_time, run_state_id)
 
         # Check if submit process has ended:
@@ -717,11 +914,11 @@ class SimGroup(object):
             # Get the Job-ID from the submit return
             job_id_task_id = submit_stdout.split()[2]
             job_id = int(job_id_task_id.split('.')[0])
-            database.set_run_group_sge_jobid(rg_id, job_id)
+            dbs.set_run_group_sge_jobid(rg_id, job_id)
 
         else:
             # Set run_states to 6 "pending_process":
-            database.set_all_run_states(rg_id, 6)
+            dbs.set_all_run_states(rg_id, 6)
 
         if run_group['auto_process']:
 
@@ -781,9 +978,9 @@ class SimGroup(object):
             conn_arch.copy_to_dest(subpath=plot_path)
 
         # Change state of all runs to 2 ("pending_run")
-        run_groups = database.get_run_groups(self.db_id)
+        run_groups = dbs.get_sim_group_run_groups(self.dbid)
         for rg_id in [i['id'] for i in run_groups]:
-            database.set_all_run_states(rg_id, 2)
+            dbs.set_all_run_states(rg_id, 2)
 
         print('Copying SimGroup to Scratch -- DONE')
 
@@ -864,28 +1061,34 @@ class SimGroup(object):
 
         return path
 
-    def get_run_path(self, sim_idx, run_idx):
+    def get_run_path(self, sim_idx, run_group_idx):
         """Get the path to a simulation run directory."""
 
         sim_path = self.get_sim_path(sim_idx)
-        run_path = sim_path + [self.path_options['run_fmt'].format(run_idx)]
+        run_path = sim_path
+        run_path += [self.path_options['run_fmt'].format(run_group_idx)]
 
         return run_path
 
-    def check_run_success(self, sim_idx, run_idx):
+    def check_run_success(self, sim_idx, run_group_idx):
         """Check a given run of a given sim has succeeded."""
 
-        run_path = self.get_run_path(sim_idx, run_idx)
+        run_path = self.get_run_path(sim_idx, run_group_idx)
         run_path_full = self.scratch.path.joinpath(*run_path)
         success = self.sims[sim_idx].check_success(run_path_full)
 
         return success
 
-    def parse_result(self, sim_idx, run_idx):
+    def parse_result(self, sim_idx, run_group_idx):
         """Parse results for a given run of a given sim and add to the sim
         results attribute."""
 
-        run_path = self.get_run_path(sim_idx, run_idx)
+        run_path = self.get_run_path(sim_idx, run_group_idx)
         run_path_full = self.scratch.path.joinpath(*run_path)
+
+        run_idx = utils.dict_from_list(
+            self.sims[sim_idx].runs,
+            {'run_group_order_in_sim_group': run_group_idx}
+        )['run_order_in_sim']
 
         self.sims[sim_idx].parse_result(run_path_full, run_idx)

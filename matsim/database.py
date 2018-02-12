@@ -5,6 +5,7 @@ import pymysql.cursors
 from passlib.hash import pbkdf2_sha256
 
 from matsim import DB_CONFIG, CONFIG
+from matsim.utils import prt
 
 _AUTO_LOOKUP = {
     True: 'true',
@@ -900,19 +901,17 @@ def get_software(name, user_cred=None):
     """Get a particular software by name, for this user."""
 
     user_cred = user_cred or CONFIG['user']
-    user_id = get_user_id(user_cred)
+    _ = get_user_id(user_cred)
 
     sql = (
-        'select s.id, s.name '
-        'from software s '
-        'where '
-        's.user_account_id = %s and '
-        's.name = %s'
+        'select * '
+        'from software '
+        'where name = %s'
     )
-    software = exec_select(sql, (user_id, name))
+    software = exec_select(sql, (name,))
 
     if not software:
-        msg = ('No software with name "{}" exists for given user.')
+        msg = ('No software with name "{}" exists.')
         raise ValueError(msg.format(name))
 
     return software
@@ -1010,7 +1009,7 @@ def get_software_instance_by_name(name, user_cred=None):
         'select si.*, s.name "software_name" '
         'from software_instance si '
         'inner join software s on s.id = si.software_id '
-        'where s.user_account_id = %s and '
+        'where si.user_account_id = %s and '
         'si.name = %s'
     )
 
@@ -1071,7 +1070,62 @@ def get_software_instance_ok_scratch(name, user_cred=None):
     return scratch_ids
 
 
-def get_sim_group(human_id, user_cred=None):
+def get_sim_group_state_id(human_id, user_cred=None):
+    """Get the state of a given sim group, return False if does not exist."""
+
+    user_cred = user_cred or CONFIG['user']
+    user_id = get_user_id(user_cred)
+
+    sql = (
+        'select sim_group_state_id from sim_group '
+        'where human_id = %s '
+        'and user_account_id = %s'
+    )
+    state_id = exec_select(sql, (human_id, user_id))
+
+    if not state_id:
+        return False
+    else:
+        return state_id['sim_group_state_id']
+
+
+def set_sim_group_state_id(human_id, state_id, user_cred=None):
+    """Get sim group state ID."""
+
+    user_cred = user_cred or CONFIG['user']
+    user_id = get_user_id(user_cred)
+
+    sql = (
+        'update sim_group '
+        'set sim_group_state_id = %s '
+        'where human_id = %s '
+        'and user_account_id = %s'
+    )
+    args = (state_id, human_id, user_id)
+    exec_update(sql, args)
+
+
+def get_sim_group_sims(sim_group_id, user_cred=None):
+    """Get all sims associated with a given sim group."""
+
+    user_cred = user_cred or CONFIG['user']
+    user_id = get_user_id(user_cred)
+
+    sql = (
+        'select s.* '
+        'from sim s '
+        'inner join sim_group sg on sg.id = s.sim_group_id '
+        'where sg.id = %s '
+        'and sg.user_account_id = %s '
+        'order by s.order_in_sim_group'
+
+    )
+    sims = exec_select(sql, (sim_group_id, user_id), fetch_all=True)
+
+    return sims
+
+
+def get_sim_group_by_human_id(human_id, user_cred=None):
     """Get a SimGroup from the database by human_id"""
 
     user_cred = user_cred or CONFIG['user']
@@ -1089,10 +1143,7 @@ def get_sim_group(human_id, user_cred=None):
         msg = ('No sim group with human_id "{}" exists for given user.')
         raise ValueError(msg.format(human_id))
 
-    sg_id = sim_group.pop('id')
-    sim_group.update({
-        'db_id': sg_id
-    })
+    sg_id = sim_group['id']
 
     # Deserialise path options:
     sim_group['path_options'] = json.loads(sim_group['path_options'])
@@ -1107,7 +1158,7 @@ def get_sim_group(human_id, user_cred=None):
 
     # Get run groups:
     software_name = None
-    all_run_groups = get_run_groups(sg_id)
+    all_run_groups = get_sim_group_run_groups(sg_id)
     for rg_idx, _ in enumerate(all_run_groups):
 
         run_group = all_run_groups[rg_idx]
@@ -1127,9 +1178,11 @@ def get_sim_group(human_id, user_cred=None):
             raise ValueError('Software name problemo!')
 
         run_group.update({
-            'db_id': run_group.pop('id'),
             'auto_submit': _AUTO_LOOKUP[run_group['auto_submit']],
             'auto_process': _AUTO_LOOKUP[run_group['auto_process']],
+            'job_array': bool(run_group['run_group_sge_job_array']),
+            'selective_submission': bool(
+                run_group['run_group_sge_selective_submission']),
         })
 
         run_opt['groups'].append({
@@ -1148,6 +1201,16 @@ def get_sim_group(human_id, user_cred=None):
     return sim_group
 
 
+def get_software_id_by_name(software_name):
+    """Get the software ID by it's (unique) name."""
+
+    sql = (
+        'select * from software where name = %s'
+    )
+    software_id = exec_select(sql, (software_name, ))['id']
+    return software_id
+
+
 def add_sim_group(sim_group, user_cred=None):
     """Add a SimGroup object to the database."""
 
@@ -1155,20 +1218,19 @@ def add_sim_group(sim_group, user_cred=None):
     user_id = get_user_id(user_cred)
 
     # Check the sim group is not already added
-    if sim_group.db_id:
+    if sim_group.dbid:
         raise ValueError('Sim group has already been added to the database.')
 
     # Add to the sim_group table:
     sql = (
         'insert into sim_group '
         '(human_id, user_account_id, stage_id, scratch_id, archive_id, '
-        'path_options, name, archive_started) '
-        'values (%s, %s, %s, %s, %s, %s, %s, %s)'
+        'path_options, name, sim_group_state_id, software_id) '
+        'values (%s, %s, %s, %s, %s, %s, %s, %s, %s)'
     )
-
     path_opt = json.dumps(sim_group.path_options)
-
-    sg_id = exec_insert(sql, (
+    software_id = get_software_id_by_name(sim_group.software)
+    args = (
         sim_group.human_id,
         user_id,
         sim_group.stage.stage_id,
@@ -1176,36 +1238,34 @@ def add_sim_group(sim_group, user_cred=None):
         sim_group.archive.archive_id,
         path_opt,
         sim_group.name,
-        0
-    ))
+        1,
+        software_id
+    )
+
+    prt(sql, 'sql')
+    prt(args, 'args')
+
+    sg_id = exec_insert(sql, args)
+    sim_group.dbid = sg_id
 
     # Add sims to sim table
-    sim_insert_ids = []
     for sim_idx in range(sim_group.num_sims):
 
         sql_sim = (
             'insert into sim '
-            '(sim_group_id, order_id) '
+            '(sim_group_id, order_in_sim_group) '
             'values (%s, %s)'
         )
-        sim_insert = exec_insert(sql_sim, (sg_id, sim_idx + 1))
-        sim_insert_ids.append(sim_insert)
+        sim_insert = exec_insert(sql_sim, (sg_id, sim_idx))
+        sim_group.sims[sim_idx].dbid = sim_insert
 
-    # Add to the run_group table
-    rg_insert_ids = []
-    for run_group in sim_group.run_options['groups']:
+    # # Add to the run_group table
+    # rg_insert_ids = []
+    # for run_group in sim_group.run_options['groups']:
 
-        sge = sim_group.scratch.sge
-        rg_insert = add_run_group(sg_id, run_group, sim_insert_ids, 1, sge)
-        rg_insert_ids.append(rg_insert)
-
-    out = {
-        'sim_group_id': sg_id,
-        'sim_ids': sim_insert_ids,
-        'run_group_ids': rg_insert_ids,
-    }
-
-    return out
+    #     sge = sim_group.scratch.sge
+    #     rg_insert = add_run_group(sg_id, run_group, sim_insert_ids, 1, sge)
+    #     rg_insert_ids.append(rg_insert)
 
 
 def get_sim_group_runs(sim_group_id, states=None, user_cred=None):
@@ -1216,14 +1276,15 @@ def get_sim_group_runs(sim_group_id, states=None, user_cred=None):
     user_id = get_user_id(user_cred)
 
     sql = (
-        'select r.*, s.order_id "sim_order_id", '
-        'rg.order_id "run_group_order_id", rgsge.job_id "sge_job_id", '
-        'rgsge.is_job_array "sge_job_array" '
+        'select r.*, s.order_in_sim_group "sim_order_in_sim_group", '
+        'rg.order_in_sim_group "run_group_order_in_sim_group", '
+        'rgsge.job_id "run_group_sge_job_id", '
+        'rgsge.job_array "run_group_sge_job_array" '
         'from run_group rg '
         'inner join sim_group sg on sg.id = rg.sim_group_id '
         'inner join run r on r.run_group_id = rg.id '
         'inner join sim s on s.id = r.sim_id '
-        'inner join run_group_sge rgsge on rgsge.run_group_id = rg.id '
+        'left outer join run_group_sge rgsge on rgsge.run_group_id = rg.id '
         'where sg.id = %s and '
         'sg.user_account_id = %s'
     )
@@ -1233,26 +1294,36 @@ def get_sim_group_runs(sim_group_id, states=None, user_cred=None):
         sql += ' and r.run_state_id in %s'
         args = (sim_group_id, user_id, states)
 
+    sql += ' order by rg.order_in_sim_group'
+
     run_groups = exec_select(sql, args, fetch_all=True)
 
     return run_groups
 
 
-def get_run_group_runs(run_group_id, user_cred=None):
-    """Get runs belonging to a given run group"""
+def get_run_group_runs(run_group_id, states=None, user_cred=None):
+    """Get runs belonging to a given run group, optionally in given states."""
 
     user_cred = user_cred or CONFIG['user']
-    _ = get_user_id(user_cred)
-
-    check_run_group_ownership(run_group_id, user_cred=user_cred)
+    user_id = get_user_id(user_cred)
 
     sql = (
-        'select * '
-        'from run '
+        'select r.* '
+        'from run r '
+        'inner join run_group rg on rg.id = r.run_group_id '
+        'inner join sim_group sg on sg.id = rg.sim_group_id '
         'where run_group_id = %s '
-        'order by order_id'
+        'and sg.user_account_id = %s'
     )
-    runs = exec_select(sql, (run_group_id,), fetch_all=True)
+    args = [run_group_id, user_id]
+
+    if states:
+        sql += ' and r.run_state_id in %s'
+        args += [states]
+
+    sql += ' order by r.order_in_run_group'
+
+    runs = exec_select(sql, tuple(args), fetch_all=True)
 
     if not runs:
         msg = 'No runs in run group with ID {} is associated with this user.'
@@ -1262,20 +1333,17 @@ def get_run_group_runs(run_group_id, user_cred=None):
 
 
 def get_run_group(run_group_id, user_cred=None):
-    """Find out if a run group has been submitted."""
+    """Get a run group."""
 
     user_cred = user_cred or CONFIG['user']
     user_id = get_user_id(user_cred)
 
-    check_run_group_ownership(run_group_id, user_cred=user_cred)
-
     sql = (
-        'select * '
+        'select rg.* '
         'from run_group rg '
         'inner join sim_group sg on sg.id = rg.sim_group_id '
-        'inner join user_account u on u.id = sg.user_account_id '
         'where rg.id = %s and '
-        'u.id = %s'
+        'sg.user_account_id = %s'
     )
     run_group = exec_select(sql, (run_group_id, user_id))
 
@@ -1286,81 +1354,104 @@ def get_run_group(run_group_id, user_cred=None):
     return run_group
 
 
-def get_run_groups(sim_group_id, user_cred=None):
+def get_sim_group_run_groups(sim_group_id, user_cred=None):
     """Get all run groups associated with a given sim group."""
 
     user_cred = user_cred or CONFIG['user']
     user_id = get_user_id(user_cred)
 
     sql = (
-        'select rg.* '
+        'select rg.*, rgsge.job_array "run_group_sge_job_array", '
+        'rgsge.selective_submission "run_group_sge_selective_submission" '
         'from run_group rg '
         'inner join sim_group sg on sg.id = rg.sim_group_id '
+        'left outer join run_group_sge rgsge on rgsge.run_group_id = rg.id '
         'where sg.id = %s and '
         'sg.user_account_id = %s '
-        'order by rg.order_id'
+        'order by rg.order_in_sim_group'
     )
     run_groups = exec_select(sql, (sim_group_id, user_id), fetch_all=True)
 
     return run_groups
 
 
-def add_run_group(sim_group_id, run_group, sim_insert_ids, run_state, sge,
-                  user_cred=None):
+def get_count_sim_group_run_groups(sim_group_id, user_cred=None):
+    """Return number of run groups for a given sim group."""
+
+    user_cred = user_cred or CONFIG['user']
+    user_id = get_user_id(user_cred)
+
+    sql = (
+        'select count(*) from run_group rg '
+        'inner join sim_group sg on sg.id = rg.sim_group_id '
+        'where sg.id = %s '
+        'and sg.user_account_id = %s'
+    )
+    count = exec_select(sql, (sim_group_id, user_id))['count(*)']
+
+    return count
+
+
+def add_run_group(sim_group_id, run_group_defn, sim_insert_ids, run_order_in_sims,
+                  run_state, is_sge, user_cred=None):
     """Add a run group to a given sim group."""
 
     # First get existing run groups:
-    pre_rgs = get_run_groups(sim_group_id, user_cred)
-    order_id = len(pre_rgs) + 1
+    pre_rgs = get_sim_group_run_groups(sim_group_id, user_cred)
+    order_in_sim_group = len(pre_rgs)
 
     # Add to run_group table:
     sql = (
         'insert into run_group '
-        '(sim_group_id, software_instance_id, num_cores, order_id, '
+        '(sim_group_id, software_instance_id, num_cores, order_in_sim_group, '
         'auto_submit, auto_process) '
         'values (%s, %s, %s, %s, %s, %s)'
     )
 
     rg_insert_id = exec_insert(sql, (
         sim_group_id,
-        run_group['software_instance']['id'],
-        run_group['num_cores'],
-        order_id,
-        _AUTO_LOOKUP[run_group['auto_submit']],
-        _AUTO_LOOKUP[run_group['auto_process']]
+        run_group_defn['software_instance']['id'],
+        run_group_defn['num_cores'],
+        order_in_sim_group,
+        _AUTO_LOOKUP[run_group_defn['auto_submit']],
+        _AUTO_LOOKUP[run_group_defn['auto_process']]
     ))
 
     rg_sge_insert_id = None
-    if sge:
+    if is_sge:
         # Also add to run_group_sge table:
         sql_sge = (
             'insert into run_group_sge '
-            '(run_group_id, is_job_array, is_selective_submission, '
+            '(run_group_id, job_array, selective_submission, '
             'resource_flag) '
             'values (%s, %s, %s, %s)'
         )
         rg_sge_insert_id = exec_insert(sql_sge, (
             rg_insert_id,
-            run_group['job_array'],
-            run_group['selective_submission'],
-            run_group.get('resource_flag')
+            run_group_defn['job_array'],
+            run_group_defn['selective_submission'],
+            run_group_defn.get('resource_flag')
         ))
 
     # Add to the run table
     run_insert_ids = []
-    for sim_idx_idx, sim_idx in enumerate(run_group['sim_idx']):
+    for order_in_run_group, _ in enumerate(run_group_defn['sim_idx']):
 
-        sim_id = sim_insert_ids[sim_idx]
+        sim_id = sim_insert_ids[order_in_run_group]
+        order_in_sim = run_order_in_sims[order_in_run_group]
 
         sql_run = (
-            'insert into run (sim_id, run_group_id, run_state_id, order_id) '
-            'values (%s, %s, %s, %s)'
+            'insert into run (sim_id, run_group_id, run_state_id, '
+            'order_in_run_group, order_in_sim) '
+            'values (%s, %s, %s, %s, %s)'
         )
-        args = (sim_id, rg_insert_id, run_state, sim_idx_idx + 1)
+        args = (
+            sim_id, rg_insert_id, run_state, order_in_run_group, order_in_sim
+        )
         rn_insert = exec_insert(sql_run, args)
 
         rn_sge_insert = None
-        if sge:
+        if is_sge:
 
             # Also add to run_sge table:
             sql_run_sge = ('insert into run_sge (run_id) values (%s)')
@@ -1547,12 +1638,11 @@ def get_runs_by_scratch(scratch_id, run_state_ids=None, user_cred=None):
     check_scratch_ownership(scratch_id, user_cred)
 
     sql = (
-        'select r.id "run_id", r.order_id "run_order_id", r.run_state_id, '
-        'rg.id "run_group_id", rgs.job_id '
+        'select r.*, rgs.job_id "run_group_sge_job_id" '
         'from run r '
         'inner join run_group rg on rg.id = r.run_group_id '
-        'inner join run_group_sge rgs on rgs.run_group_id = rg.id '
         'inner join sim_group sg on sg.id = rg.sim_group_id '
+        'left outer join run_group_sge rgs on rgs.run_group_id = rg.id '
         'where sg.scratch_id = %s'
     )
 
@@ -1560,17 +1650,9 @@ def get_runs_by_scratch(scratch_id, run_state_ids=None, user_cred=None):
         run_state_ids = []
 
     if run_state_ids:
-        sql += ' and r.run_state_id = '
+        sql += ' and r.run_state_id in %s'
+        args = (scratch_id, run_state_ids)
 
-    for rs_id_idx, _ in enumerate(run_state_ids):
-
-        if rs_id_idx > 0:
-            sql += ' or %s'
-        else:
-            sql += '%s'
-
-    if run_state_ids:
-        args = (scratch_id, *run_state_ids)
     else:
         args = (scratch_id,)
 

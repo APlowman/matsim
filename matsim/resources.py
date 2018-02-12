@@ -110,7 +110,12 @@ class Archive(Resource):
 class ResourceConnection(object):
     """Class to represent a connection between a local resource and another."""
 
-    def __init__(self, src, dst):
+    @classmethod
+    def check_exists(cls, src, dst):
+        """Check a resource connection between src and dst exists on the 
+        database, and return the result if it does. Otherwise raise ValueError.
+
+        """
 
         res_conn = database.get_resource_connection(
             src.resource_id, dst.resource_id)
@@ -118,6 +123,12 @@ class ResourceConnection(object):
         if res_conn is None:
             raise ValueError('No resource connection information between source'
                              'and destination resources can be found.')
+
+        return res_conn
+
+    def __init__(self, src, dst):
+
+        res_conn = ResourceConnection.check_exists(src, dst)
 
         self.src = src
         self.dst = dst

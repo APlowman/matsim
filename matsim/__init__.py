@@ -34,6 +34,7 @@ SEQ_FN = os.path.join(SET_UP_PATH, 'sequences.yml')
 MAKESIMS_FN = os.path.join(SET_UP_PATH, CONFIG['option_paths']['makesims'])
 UPDATE_FN = os.path.join(SET_UP_PATH, CONFIG['option_paths']['update'])
 PROCESS_FN = os.path.join(SET_UP_PATH, CONFIG['option_paths']['process'])
+ADD_RG_FN = os.path.join(SET_UP_PATH, CONFIG['option_paths']['add_run_group'])
 
 # Jobscript template directory:
 JS_TEMPLATE_DIR = os.path.join(_SCRIPTS_PATH, 'set_up', 'jobscript_templates')

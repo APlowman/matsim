@@ -1,7 +1,10 @@
 """matsim.atomistic.simulation.castep.py"""
 
+import copy
+
 import numpy as np
 
+from matsim import utils
 from matsim.atomistic.software import castep as castepio
 from matsim.atomistic.simulation import SUPERCELL_TYPE_LOOKUP
 from matsim.atomistic.simulation.sim import AtomisticSimulation
@@ -92,25 +95,19 @@ class CastepSimulation(AtomisticSimulation):
                 np.vstack([inv_sym_rot, inv_sym_trans])
             ]
 
-    def write_input_files(self, path):
+    def write_input_files(self, run_idx, path):
+        """Write input files necessary to perform a CASTEP simulation. """
 
-        common_params = {
-            'supercell': self.structure.supercell,
-            'atom_sites': self.structure.atom_sites,
-            'species': self.structure.species,
-            'species_idx': self.structure.species_idx,
-            'path': path,
-        }
-
-        cst_opt = self.options['params']['castep']
+        run_parameters = super().get_run_parameters(run_idx)
+        common_params = super().get_common_atomistic_parameters()
         cst_in_params = {
-            'seedname': cst_opt['seedname'],
-            'cell': cst_opt['cell'],
-            'param': cst_opt['param'],
-            # 'sym_ops': cst_opt['sym_ops'],
+            'path': path,
+            'seedname': run_parameters['castep']['seedname'],
+            'cell': run_parameters['castep']['cell'],
+            'param': run_parameters['castep']['param'],
+            # 'sym_ops': run_parameters['castep']['sym_ops'],
             **common_params
         }
-
         castepio.write_castep_inputs(**cst_in_params)
 
     def to_jsonable(self):

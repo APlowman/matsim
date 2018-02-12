@@ -29,7 +29,7 @@ def main(sim_group, run_group_idx=None, do_update=True, force_process=None):
     """
 
     # prt(sim_group, 'sim_group')
-    sg_id = sim_group.db_id
+    sg_id = sim_group.dbid
     # prt(sg_id, 'sg_id')
 
     if do_update:
@@ -43,7 +43,7 @@ def main(sim_group, run_group_idx=None, do_update=True, force_process=None):
                          'set.')
 
     if force_process:
-        rg_id = database.get_run_groups(sg_id)[run_group_idx]['id']
+        rg_id = database.get_sim_group_run_groups(sg_id)[run_group_idx]['id']
         prt(rg_id, 'rg_id')
 
         rg_runs = database.get_run_group_runs(rg_id)
@@ -60,20 +60,21 @@ def main(sim_group, run_group_idx=None, do_update=True, force_process=None):
     pending_process = database.get_sim_group_runs(sg_id, [6, 8])
 
     print('Found {} run(s) to process.'.format(len(pending_process)))
-    # prt(pending_process, 'pending_process runs')
-    # prt(run_group_idx, 'run_group_idx')
+    prt(pending_process, 'pending_process runs')
+    prt(run_group_idx, 'run_group_idx')
 
     if run_group_idx:
 
         # Only keep runs belonging to given run group
+        pending_process_rg = []
         for pen_run_idx in range(len(pending_process)):
-
             pen_run = pending_process[pen_run_idx]
-            if pen_run['run_group_order_id'] == run_group_idx + 1:
-                pending_process = [pen_run]
-                break
-            else:
-                pending_process = []
+            if pen_run['run_group_order_in_sim_group'] == run_group_idx:
+                pending_process_rg.append(pen_run)
+
+        pending_process = pending_process_rg
+
+    prt(pending_process, 'pending_process')
 
     # Set state to 7 ("processing") for these runs
     run_ids = [i['id'] for i in pending_process]
@@ -88,13 +89,15 @@ def main(sim_group, run_group_idx=None, do_update=True, force_process=None):
     for pen_run_idx, pen_run in enumerate(pending_process):
 
         # Get path on scratch of run:
-        sim_idx = pen_run['sim_order_id'] - 1
-        run_idx = pen_run['run_group_order_id'] - 1
-        sim_run_idx.append([sim_idx, run_idx])
-        run_group_sge_job_id.append(pen_run['sge_job_id'])
-        run_order_id.append(pen_run['order_id'])
-        run_group_is_job_arr.append(bool(pen_run['sge_job_array']))
-        run_success = sim_group.check_run_success(sim_idx, run_idx)
+        sim_idx = pen_run['sim_order_in_sim_group']
+        run_group_idx = pen_run['run_group_order_in_sim_group']
+        sim_run_idx.append([sim_idx, run_group_idx])
+
+        run_group_sge_job_id.append(pen_run['run_group_sge_job_id'])
+        run_order_id.append(pen_run['order_in_run_group'])
+        run_group_is_job_arr.append(bool(pen_run['run_group_sge_job_array']))
+
+        run_success = sim_group.check_run_success(sim_idx, run_group_idx)
 
         if run_success:
             no_errs_pen_idx.append(pen_run_idx)
@@ -121,11 +124,11 @@ def main(sim_group, run_group_idx=None, do_update=True, force_process=None):
         # Overwrite sim_group.json with new results:
         sim_group.save_state('scratch')
 
-        if not database.check_archive_started(sg_id):
+        if database.get_sim_group_state_id(sim_group.human_id) != 5:
             # Copy everything to archive apart from calcs directory and SGE
             # log files:
             arch_conn.copy_to_dest(ignore=['calcs', 'sge'])
-            database.set_archive_started(sg_id)
+            database.set_sim_group_state_id(sim_group.human_id, 5)
 
         else:
             # Copy updated sim_group.json (and backup old one on archive)
@@ -175,6 +178,7 @@ def main(sim_group, run_group_idx=None, do_update=True, force_process=None):
                 prt(stdeo_path, 'stdeo_path')
                 prt(stdout_path, 'stdout_path')
                 prt(stderr_path, 'stderr_path')
+
                 arch_conn.copy_to_dest(subpath=stdout_path)
                 arch_conn.copy_to_dest(subpath=stderr_path)
 

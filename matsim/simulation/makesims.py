@@ -3,142 +3,42 @@
 import copy
 
 from matsim import database as dbs
-from matsim import utils
+from matsim import utils, CONFIG
 from matsim.utils import prt
-from matsim.resources import Stage, Scratch, Archive
+from matsim.resources import Stage, Scratch, Archive, ResourceConnection
 from matsim.simulation import apply_base_update
 from matsim.simulation.sequence import get_sim_updates
 from matsim.simulation.simgroup import SimGroup, SOFTWARE_CLASS_MAP
 
 
-def validate_run_group_sim_idx(run_options, num_sims):
-    """Validate the user input for the `sim_idx` key of each run group."""
-
-    sim_idx_msg_1 = ('Run group #{} `sim_idx` must be either "all" or a list of '
-                     'integers that index the sims.')
-    sim_idx_msg_2 = ('Run group #{} `sim_idx` cannot contain repeated '
-                     'indices.')
-    job_arr_msg = ('`job_array` cannot be `True` for a Scratch which is not'
-                   ' SGE')
-    sel_sub_msg_1 = ('`selective_submission` cannot be `True` if `job_array` is'
-                     ' `False`')
-    sel_sub_msg_2 = ('`selective_submission` cannot be `True` for a Scratch '
-                     'which is not SGE, and if `job_array` if `False`.')
-
-    scratch = run_options['scratch']
-
-    for rg_idx in range(len(run_options['groups'])):
-
-        run_group = run_options['groups'][rg_idx]
-        rg_sim_idx = run_group['sim_idx']
-
-        if rg_sim_idx == 'all':
-            run_group['sim_idx'] = list(range(num_sims))
-
-        elif isinstance(rg_sim_idx, list):
-
-            if min(rg_sim_idx) < 0 or max(rg_sim_idx) > (num_sims - 1):
-                raise ValueError(sim_idx_msg_1.format(rg_idx))
-
-            if len(set(rg_sim_idx)) != len(rg_sim_idx):
-                raise ValueError(sim_idx_msg_2.format(rg_idx))
-
-        else:
-            raise ValueError(sim_idx_msg_1.format(rg_idx))
-
-        # Set/check `job_array` and `selective_submission`:
-        if scratch.sge:
-
-            job_array = run_group.get('job_array',
-                                      len(run_group['sim_idx']) > 1)
-            sel_sub = run_group.get('selective_submission', False)
-
-            if sel_sub is True and not job_array:
-                raise ValueError(sel_sub_msg_1)
-
-        else:
-
-            if run_group.get('job_array') is True:
-                raise ValueError(job_arr_msg)
-            if run_group.get('selective_submission') is True:
-                raise ValueError(sel_sub_msg_2)
-
-            job_array = False
-            sel_sub = False
-
-        run_group['job_array'] = job_array
-        run_group['selective_submission'] = sel_sub
-
-
 def validate_run_options(run_options):
     """Validate the run options for making a new SimGroup.
 
-    The only missing validation check is checking the `sim_idx` of each run
-    group, since we need to know the number of sims in the group to check this,
-    which requires instantiating the SimSequenceGroup, which in turn requires
-    knowing the software name, which is validated in this function.
+    To check:
+      1.) `software` exists on database
+      2.) The machine of stage is the current machine
+      3.) resource connections exists between:
+          a)  stage -> scratch
+          b)  stage -> archive
+          c)  scratch -> archive
 
     """
+    # Check software exists on database:
+    _ = dbs.get_software(run_options['software'])
 
-    # TODO: raise exception if sge.jobarray False and len(sim_idx) > 1
-
+    stage = run_options['stage']
     scratch = run_options['scratch']
-    software_name = None
+    archive = run_options['archive']
 
-    msg_soft_ins = 'Software instance "{}" is not allowed on scratch "{}"'
-    msg_soft_name = 'All run groups must use the same software (name)!'
-    msg_invalid_cores = ('{} core(s) is not supported on the specified '
-                         'software instance.')
+    # Check the machine of the stage is the current machine:
+    if stage.machine_name != CONFIG['machine_name']:
+        raise ValueError('Specified Stage must belong to the same machine as'
+                         'that of this computer, specified in the config file.')
 
-    for run_group in run_options['groups']:
-
-        # Check software instance for this run group is allowed on this scratch
-        soft_inst_name = run_group['software_instance']
-        soft_inst = dbs.get_software_instance_by_name(soft_inst_name)
-        run_group['software_instance'] = soft_inst
-        rg_software_name = soft_inst['software_name']
-
-        ok_scratch_ids = dbs.get_software_instance_ok_scratch(soft_inst_name)
-        if scratch.scratch_id not in ok_scratch_ids:
-            raise ValueError(msg_soft_ins.format(soft_inst_name, scratch.name))
-
-        # Set software name for this sim group:
-        if software_name is None:
-            software_name = rg_software_name
-
-        elif software_name != rg_software_name:
-            raise ValueError(msg_soft_name)
-
-        # Check valid num cores specified:
-        ncores = run_group['num_cores']
-        cores_good = soft_inst['min_cores'] <= ncores <= soft_inst['max_cores']
-        if not cores_good:
-            raise ValueError(msg_invalid_cores.format(ncores))
-
-    run_options['software_name'] = software_name
-    return software_name
-
-
-def add_sim_group_to_db(sim_group):
-    """Add the new sim group to the database."""
-
-    print('Adding SimGroup to the database -- PENDING')
-    db_ret = dbs.add_sim_group(sim_group)
-
-    # Add sim grounp database ID:
-    sim_group.db_id = db_ret['sim_group_id']
-
-    # Add run group database IDs:
-    run_groups = sim_group.run_options['groups']
-    for rg_idx, _ in enumerate(run_groups):
-        run_group = run_groups[rg_idx]
-        rg_ids = db_ret['run_group_ids'][rg_idx]
-        run_group.update({
-            'db_id': rg_ids[0],
-            'sge_db_id': rg_ids[1]
-        })
-
-    print('Adding SimGroup to the database -- DONE')
+    # Check resource connections exist between resources:
+    _ = ResourceConnection.check_exists(stage, scratch)
+    _ = ResourceConnection.check_exists(stage, archive)
+    _ = ResourceConnection.check_exists(scratch, archive)
 
 
 def make_new_simgroup(options):
@@ -181,11 +81,11 @@ def make_new_simgroup(options):
     run_options['scratch'] = Scratch(run_options['scratch'], add_path)
     run_options['archive'] = Archive(run_options['archive'], add_path)
 
-    software_name = validate_run_options(run_options)
-    sim_class = SOFTWARE_CLASS_MAP[software_name]
+    validate_run_options(run_options)
+
+    sim_class = SOFTWARE_CLASS_MAP[run_options['software']]
     base_sim = sim_class(base_sim_options)
     sim_updates, sequences = get_sim_updates(seq_options, base_sim)
-    validate_run_group_sim_idx(run_options, len(sim_updates))
 
     sim_group = SimGroup(base_sim_options, run_options, path_options,
                          sim_updates, sequences, human_id, name,
@@ -199,14 +99,21 @@ def make_new_simgroup(options):
 def main(options):
     """Main function to generate a simulation group."""
 
+    # Extract out run group options:
+    run_group_options = options['run'].pop('groups', [])
+    options['run']['groups'] = []
+    prt(run_group_options, 'run_group_options')
+
     # Generate a new SimGroup object
     sim_group = make_new_simgroup(options)
+    prt(sim_group.run_options, 'sim_group.run_options')
 
-    # Generate input files on stage (current machine):
-    sim_group.write_initial_runs()
+    # Generate helper files on stage (current machine), and add to database:
+    sim_group.initialise()
 
-    # Add records to database:
-    add_sim_group_to_db(sim_group)
+    # Generate input files for initial run groups, add to database:
+    for _, run_group_defn in enumerate(run_group_options):
+        sim_group.add_run_group(run_group_defn)
 
     # Save current state of sim group as JSON file:
     sim_group.save_state('stage')

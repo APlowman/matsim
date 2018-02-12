@@ -87,24 +87,25 @@ class LammpsSimulation(AtomisticSimulation):
 
             lammps_opts['charges'] = charges
 
-    def write_input_files(self, path):
+    def write_input_files(self, run_idx, path):
+        """Write input files necessary to perform a LAMMPS simulation. """
 
-        lammps_opts = self.options['params']['lammps']
-        if lammps_opts.get('interaction_idx') is not None:
-            # Resolve correct interactions block (may have already been
-            # resolved from a previous run -- this is not ideal behaviour...)
-            int_idx = lammps_opts.pop('interaction_idx')
-            lammps_opts['interactions'] = lammps_opts['interactions'][int_idx]
+        run_parameters = super().get_run_parameters(run_idx)
+        common_params = super().get_common_atomistic_parameters()
+
+        # Resolve correct interactions block (may have already been
+        # resolved from a previous run -- this is not ideal behaviour...)
+        # Can we do this in `_process_options`?
+        lammps_opts = run_parameters['lammps']
+        int_idx = lammps_opts.pop('interaction_idx')
+        lammps_opts['interactions'] = lammps_opts['interactions'][int_idx]
 
         lmp_in_params = {
-            **lammps_opts,
-            'supercell': self.structure.supercell,
-            'atom_sites': self.structure.atom_sites,
-            'species': self.structure.species,
-            'species_idx': self.structure.species_idx,
             'path': path,
             'atom_constraints': self.options['structure']['constraints']['atoms'],
             'cell_constraints': self.options['structure']['constraints']['cell'],
+            **lammps_opts,
+            **common_params
         }
         lammpsio.write_lammps_inputs(**lmp_in_params)
 

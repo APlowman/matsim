@@ -5,7 +5,8 @@ import getopt
 
 import yaml
 
-from matsim import OPTSPEC, MAKESIMS_FN, UPDATE_FN, PROCESS_FN, SEQ_DEFN, parse_opt
+from matsim import (OPTSPEC, MAKESIMS_FN, UPDATE_FN, PROCESS_FN, SEQ_DEFN,
+                    parse_opt, ADD_RG_FN)
 from matsim.utils import prt
 
 
@@ -19,7 +20,7 @@ def main(args=sys.argv[1:]):
             'process=',
             'force-process=',
             'run-group=',
-            'run_idx=',
+            'run-idx=',
             'update',
             'no-update',
             'add-run-group'
@@ -29,6 +30,9 @@ def main(args=sys.argv[1:]):
     except getopt.GetoptError:
         print('Error parsing arguments: {}'.format(args))
         sys.exit(2)
+
+    if not opts:
+        raise ValueError('Must supply arguments.')
 
     if opts[0][0] in ('-m', '--make'):
 
@@ -70,7 +74,7 @@ def main(args=sys.argv[1:]):
         for opt, arg in opts:
             if opt in ('-r', '--run-group'):
                 run_group_idx = int(arg)
-            if opt in ('-i', '--run-index'):
+            if opt in ('-i', '--run-idx'):
                 run_idx = arg
 
         if run_group_idx is None:
@@ -113,3 +117,18 @@ def main(args=sys.argv[1:]):
 
         from matsim import update
         update.main()
+
+    elif opts[0][0] in ('-a', '--add-run-group'):
+
+        from matsim.simulation.simgroup import SimGroup
+
+        print('Add run group.')
+
+        # Parse the add_run_group.yml options:
+        with open(ADD_RG_FN, 'r') as add_rg_opts_fp:
+            add_rg_opts_raw = yaml.safe_load(add_rg_opts_fp)
+        add_rg_opts = parse_opt(add_rg_opts_raw, OPTSPEC['add_run_group'])
+
+        hid = add_rg_opts.pop('id')
+        sim_group = SimGroup.load_state(hid)
+        sim_group.add_run_group(**add_rg_opts)

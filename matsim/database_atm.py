@@ -433,7 +433,13 @@ def filter_sims(user_cred=None, **kwargs):
 
     # prt(distinct_args, 'distin arg')
 
-    # Get distinct variables
+    # Get distinct variables: use this instead (to do in one query):
+    # select
+    # group_concat(distinct repeats) as reps_grp,
+    # group_concat(distinct num_atoms) as natoms_grp,
+    # group_concat(distinct software) as software_grp,
+    # ...
+    # from atm_sim
 
     distinct_vars = {}
     common_vars = {}

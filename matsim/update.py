@@ -169,10 +169,13 @@ def main():
 
             # Current state in database:
             db_state_id = run['run_state_id']
-            r_id = run['run_id']
+            r_id = run['id']
 
             # Does this run exist on qstat output:
-            run_a_qstat = qstat.get((run['job_id'], run['run_order_id']))
+            run_a_qstat = qstat.get(
+                (run['run_group_sge_job_id'],
+                 run['order_in_run_group'])
+            )
             if run_a_qstat is not None:
 
                 if run_a_qstat['state'] == 'qw' and db_state_id != 3:

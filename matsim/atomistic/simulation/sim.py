@@ -15,9 +15,21 @@ class AtomisticSimulation(Simulation):
 
     def __init__(self, options):
 
+        super().__init__()
+
         self.structure = get_structure(options)
         self.options = options
-        self.runs = []
+
+    def get_common_atomistic_parameters(self):
+        """Return parameters used in input file generation that are common to
+        all `AtomisticSimulation`s."""
+
+        return {
+            'supercell': self.structure.supercell,
+            'atom_sites': self.structure.atom_sites,
+            'species': self.structure.species,
+            'species_idx': self.structure.species_idx,
+        }
 
     @classmethod
     def copy_reference_data(cls, sim_params, stage_path, scratch_path):
