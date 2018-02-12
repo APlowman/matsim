@@ -1178,6 +1178,7 @@ def get_sim_group_by_human_id(human_id, user_cred=None):
             raise ValueError('Software name problemo!')
 
         run_group.update({
+            'dbid': run_group.pop('id'),
             'auto_submit': _AUTO_LOOKUP[run_group['auto_submit']],
             'auto_process': _AUTO_LOOKUP[run_group['auto_process']],
             'job_array': bool(run_group['run_group_sge_job_array']),
@@ -1199,6 +1200,54 @@ def get_sim_group_by_human_id(human_id, user_cred=None):
     })
 
     return sim_group
+
+
+def is_sim_group_processing(sim_group_id, user_cred=None):
+    """Check if a sim group is being processed."""
+
+    user_cred = user_cred or CONFIG['user']
+    user_id = get_user_id(user_cred)
+
+    sql = (
+        'select processing_now '
+        'from sim_group sg '
+        'inner join user_account ua on ua.id = sg.user_account_id '
+        'where sg.id = %s '
+        'and ua.id = %s '
+    )
+    args = (sim_group_id, user_id)
+    result = exec_select(sql, args)
+    if not result:
+        msg = 'No sim group with id: {}, belonging to current user.'
+        raise ValueError(msg.format(sim_group_id))
+
+    return bool(result['processing_now'])
+
+
+def set_sim_group_processing(sim_group_id, is_processing, user_cred=None):
+    """Set a sim group to processing state."""
+
+    user_cred = user_cred or CONFIG['user']
+    user_id = get_user_id(user_cred)
+
+    # First check ownership
+    sql = (
+        'select sg.id from sim_group sg '
+        'inner join user_account ua on ua.id = sg.user_account_id '
+        'where sg.id = %s '
+        'and ua.id = %s'
+    )
+    result = exec_select(sql, (sim_group_id, user_id))
+    if not result:
+        raise ValueError('No sim group.')
+
+    sql = (
+        'update sim_group sg '
+        'set sg.processing_now = %s '
+        'where sg.id = %s '
+    )
+    args = (is_processing, sim_group_id)
+    exec_update(sql, args)
 
 
 def get_software_id_by_name(software_name):

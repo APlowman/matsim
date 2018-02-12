@@ -1,5 +1,7 @@
 """matsim.analysis.process"""
 
+import time
+
 from matsim import database
 from matsim import update
 from matsim.resources import ResourceConnection
@@ -31,6 +33,16 @@ def main(sim_group, run_group_idx=None, do_update=True, force_process=None):
     # prt(sim_group, 'sim_group')
     sg_id = sim_group.dbid
     # prt(sg_id, 'sg_id')
+
+    # First check if the sim_group is currently being processed.
+    msg = ('Another processing instance is currently working on this '
+           'SimGroup. Waiting for this to finish.')
+    while database.is_sim_group_processing(sg_id):
+        print(msg)
+        time.sleep(5)
+
+    print('Processing START.')
+    database.set_sim_group_processing(sg_id, True)
 
     if do_update:
         # Update (SGE) run states in database:
@@ -190,3 +202,6 @@ def main(sim_group, run_group_idx=None, do_update=True, force_process=None):
             # Update state to 10 ("archived")
             database.set_many_run_states(
                 [pending_process[pen_run_idx]['id']], 10)
+
+    database.set_sim_group_processing(sg_id, False)
+    print('Processing END.')
