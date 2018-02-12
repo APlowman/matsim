@@ -3,6 +3,7 @@
 import sys
 import getopt
 import time
+import random
 
 import yaml
 
@@ -108,15 +109,21 @@ def main(args=sys.argv[1:]):
         sim_group = SimGroup.load_state(hid, 'scratch')
 
         # First check if the sim_group is currently being processed.
+        # Wait for a random time to split up process invokations which are
+        # closely spaced:
+        rand_wait_time = random.random() * 20
+        print('Waiting for a random wait time of: {}'.format(rand_wait_time))
+        time.sleep(rand_wait_time)
+
         msg = ('Another processing instance is currently working on this '
-               'SimGroup. Waiting for {} seconds for this to finish.')
-        wait_time = 5
+               'SimGroup. Waiting for {} seconds before re-polling..')
+        poll_interval = 2
         while dbs.is_sim_group_processing(sim_group.dbid):
-            print(msg.format(wait_time))
-            time.sleep(wait_time)
+            print(msg.format(poll_interval))
+            time.sleep(poll_interval)
 
         # Reload
-        print('reloading sim group')
+        print('Reloading sim group.')
         sim_group = SimGroup.load_state(hid, 'scratch')
 
         proc_args = {
