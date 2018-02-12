@@ -144,12 +144,20 @@ class ResourceConnection(object):
 
         """
 
-        res_conn = database.get_resource_connection(
-            src.resource_id, dst.resource_id)
+        if src == dst:
+            res_conn = {
+                'host': None,
+                'is_remote': False,
+            }
 
-        if res_conn is None:
-            raise ValueError('No resource connection information between source'
-                             'and destination resources can be found.')
+        else:
+            res_conn = database.get_resource_connection(
+                src.resource_id, dst.resource_id)
+
+            if res_conn is None:
+                msg = ('No resource connection information between source'
+                       'and destination resources can be found.')
+                raise ValueError(msg)
 
         return res_conn
 

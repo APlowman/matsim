@@ -844,6 +844,8 @@ class SimGroup(object):
 
         """
 
+        # Need to identify if we're on Stage or Scratch
+
         if dbs.get_sim_group_state_id(self.human_id) < 4:
             dbs.set_sim_group_state_id(self.human_id, 4)
 
@@ -860,7 +862,16 @@ class SimGroup(object):
                    'if `selective_submission` if True.')
             raise ValueError(msg)
 
-        conn = ResourceConnection(self.get_machine_resource()[0], self.scratch)
+        resource_type = SimGroup.get_default_state_location(
+            self.human_id, self.stage, self.scratch, self.archive
+        )
+
+        if resource_type == 'stage':
+            conn = ResourceConnection(self.stage, self.scratch)
+
+        elif resource_type == 'scratch':
+            conn = ResourceConnection(self.scratch, self.scratch)
+
         jobscript_ext = 'sh' if self.scratch.os_type == 'posix' else 'bat'
         jobscript_fn = 'jobscript.{}'.format(jobscript_ext)
 
