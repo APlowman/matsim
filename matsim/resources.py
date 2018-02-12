@@ -47,11 +47,13 @@ class Resource(object):
 
         if self.is_dropbox:
 
-            sync_client, mach_name = database.get_machine_sync_client_path(
+            sync_client_data = database.get_machine_sync_client_path(
                 self.machine_id)
 
-            if sync_client:
+            if sync_client_data:
+
                 # Use local files from sync client rather than Dropbox API:
+                sync_client, mach_name = sync_client_data
 
                 print('Using local sync client for Dropbox resource.')
 
