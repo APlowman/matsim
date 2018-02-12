@@ -34,13 +34,6 @@ def main(sim_group, run_group_idx=None, do_update=True, force_process=None):
     sg_id = sim_group.dbid
     # prt(sg_id, 'sg_id')
 
-    # First check if the sim_group is currently being processed.
-    msg = ('Another processing instance is currently working on this '
-           'SimGroup. Waiting for this to finish.')
-    while database.is_sim_group_processing(sg_id):
-        print(msg)
-        time.sleep(5)
-
     print('Processing START.')
     database.set_sim_group_processing(sg_id, True)
 
