@@ -1188,11 +1188,11 @@ def get_sim_group_by_human_id(human_id, user_cred=None):
         run_opt['groups'].append({
             **run_group,
             'software_instance': soft_inst,
-            'software_name': rg_soft_name,
+            'software': rg_soft_name,
         })
 
     run_opt.update({
-        'software_name': rg_soft_name,
+        'software': rg_soft_name,
     })
     sim_group.update({
         'run_opt': run_opt
