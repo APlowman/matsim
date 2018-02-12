@@ -862,14 +862,10 @@ class SimGroup(object):
                    'if `selective_submission` if True.')
             raise ValueError(msg)
 
-        resource_type = SimGroup.get_default_state_location(
-            self.human_id, self.stage, self.scratch, self.archive
-        )
-
-        if resource_type == 'stage':
+        state_id = dbs.get_sim_group_state_id(self.human_id)
+        if state_id in [1, 2]:
             conn = ResourceConnection(self.stage, self.scratch)
-
-        elif resource_type == 'scratch':
+        elif state_id in [3, 4, 5]:
             conn = ResourceConnection(self.scratch, self.scratch)
 
         jobscript_ext = 'sh' if self.scratch.os_type == 'posix' else 'bat'
