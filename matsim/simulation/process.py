@@ -34,7 +34,7 @@ def main(sim_group, run_group_idx=None, do_update=True, force_process=None):
     sg_id = sim_group.dbid
     # prt(sg_id, 'sg_id')
 
-    print('Processing START.')
+    print('Processing START at {}'.format(time.strftime('%Y-%m-%d %H:%M:%S')))
     database.set_sim_group_processing(sg_id, True)
 
     if do_update:
