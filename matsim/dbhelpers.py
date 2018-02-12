@@ -34,6 +34,7 @@ def is_folder(dbx, path):
 def rename_file(dbx, src_path, dst_path):
     """Rename a file from one path to another."""
     if is_file(dbx, src_path):
+        print('Renaming file: {} to {}'.format(src_path, dst_path))
         dbx.files_move_v2(src_path, dst_path)
     else:
         raise ValueError('Cannot rename a file that does not exist.')

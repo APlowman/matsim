@@ -245,10 +245,14 @@ class ResourceConnection(object):
             raise ValueError(msg.format(src_path))
 
         msg = 'Source:      "{}"\nDestination: "{}"\n'
-        msg_fmt = [src_path, dst_path]
+        msg += 'File backup: {}\n'
+        msg += 'Is file:     {}\n'
+        msg += 'Is dir:      {}\n'
+        msg_fmt = [src_path, dst_path, file_backup,
+                   src_path.is_file(), src_path.is_dir()]
         if ignore:
-            msg += 'Excluding:   "{}"\n'
-            msg_fmt += [','.join([i for i in ignore])]
+            msg += 'Excluding:   {}\n'
+            msg_fmt += [','.join(['"{}"'.format(i) for i in ignore])]
         print(msg.format(*msg_fmt))
 
         if file_backup:
