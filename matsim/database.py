@@ -1258,19 +1258,19 @@ def set_sim_group_processing(sim_group_id, is_processing, user_cred=None):
     """Set a sim group to processing state."""
 
     user_cred = user_cred or CONFIG['user']
-    user_id = get_user_id(user_cred)
+    _ = get_user_id(user_cred)
 
-    # First check ownership (MySQL warning raised when doing it in one query
-    # for some reason.)
-    sql = (
-        'select sg.id from sim_group sg '
-        'inner join user_account ua on ua.id = sg.user_account_id '
-        'where sg.id = %s '
-        'and ua.id = %s'
-    )
-    result = exec_select(sql, (sim_group_id, user_id))
-    if not result:
-        raise ValueError('No sim group.')
+    # # First check ownership (MySQL warning raised when doing it in one query
+    # # for some reason.)
+    # sql = (
+    #     'select sg.id from sim_group sg '
+    #     'inner join user_account ua on ua.id = sg.user_account_id '
+    #     'where sg.id = %s '
+    #     'and ua.id = %s'
+    # )
+    # result = exec_select(sql, (sim_group_id, user_id))
+    # if not result:
+    #     raise ValueError('No sim group.')
 
     sql = (
         'update sim_group sg '
@@ -1305,8 +1305,8 @@ def add_sim_group(sim_group, user_cred=None):
     sql = (
         'insert into sim_group '
         '(human_id, user_account_id, stage_id, scratch_id, archive_id, '
-        'path_options, name, sim_group_state_id, software_id) '
-        'values (%s, %s, %s, %s, %s, %s, %s, %s, %s)'
+        'path_options, name, sim_group_state_id, software_id, processing_now) '
+        'values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)'
     )
     path_opt = json.dumps(sim_group.path_options)
     software_id = get_software_id_by_name(sim_group.software)
@@ -1319,7 +1319,8 @@ def add_sim_group(sim_group, user_cred=None):
         path_opt,
         sim_group.name,
         1,
-        software_id
+        software_id,
+        False
     )
 
     prt(sql, 'sql')
