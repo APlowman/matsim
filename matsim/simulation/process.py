@@ -135,13 +135,10 @@ def main(sim_group, run_group_idx=None, do_update=True, force_process=None):
             subpath = ['sim_group.json']
             arch_conn.copy_to_dest(subpath=subpath, file_backup=True)
 
-        archived_ids = []
         for pen_run_idx in no_errs_pen_idx:
             # Copy relevent sim/run/ directories to Archive location
             subpath = sim_group.get_run_path(*sim_run_idx[pen_run_idx])
             arch_conn.copy_to_dest(subpath=subpath)
-
-            archived_ids.append(pending_process[pen_run_idx]['id'])
 
             if sim_group.scratch.sge:
                 # Copy SGE log files for these runs:
@@ -157,7 +154,7 @@ def main(sim_group, run_group_idx=None, do_update=True, force_process=None):
                 stdoe_fn = sim_group.name + '_' + rg_idx_str + '.{}' + sge_job_id_str
 
                 if run_group_is_job_arr[pen_run_idx]:
-                    r_idx_str = str(run_order_id[pen_run_idx])
+                    r_idx_str = str(run_order_id[pen_run_idx] + 1)
                     prt(r_idx_str, 'r_idx_str')
 
                     stdoe_fn += '.' + r_idx_str
@@ -182,5 +179,6 @@ def main(sim_group, run_group_idx=None, do_update=True, force_process=None):
                 arch_conn.copy_to_dest(subpath=stdout_path)
                 arch_conn.copy_to_dest(subpath=stderr_path)
 
-        # Update states to 10 ("archived")
-        database.set_many_run_states(archived_ids, 10)
+            # Update state to 10 ("archived")
+            database.set_many_run_states(
+                [pending_process[pen_run_idx]['id']], 10)
