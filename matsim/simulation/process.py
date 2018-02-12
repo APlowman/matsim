@@ -196,5 +196,6 @@ def main(sim_group, run_group_idx=None, do_update=True, force_process=None):
             database.set_many_run_states(
                 [pending_process[pen_run_idx]['id']], 10)
 
+    print('Processing END at {}'.format(time.strftime('%Y-%m-%d %H:%M:%S')))
     database.set_sim_group_processing(sg_id, False)
     print('Processing END.')
