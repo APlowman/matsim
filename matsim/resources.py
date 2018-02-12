@@ -7,7 +7,7 @@ import copy
 import shutil
 
 from matsim.copy_multi import copytree_multi
-from matsim import utils, database, dbhelpers as dbh
+from matsim import utils, database, dbhelpers as dbh, CONFIG
 from matsim.utils import prt
 
 
@@ -43,6 +43,31 @@ class Resource(object):
         self.machine_name = res_defn['machine_name']
         self.os_type = res_defn['machine_os_type']
         self.is_dropbox = res_defn['machine_is_dropbox']
+        self.sync_client_paths = None
+
+        if self.is_dropbox:
+
+            sync_client, mach_name = database.get_machine_sync_client_path(
+                self.machine_id)
+
+            if sync_client:
+                # Use local files from sync client rather than Dropbox API:
+
+                print('Using local sync client for Dropbox resource.')
+
+                sync_client_path_parts = pathlib.Path(
+                    sync_client['sync_path']).parts
+
+                self.is_dropbox = False
+                self.os_type = os.name
+                self.machine_id = sync_client['sync_client_machine_id']
+                self.machine_name = mach_name
+
+                self.base_path = pathlib.Path(*(sync_client_path_parts +
+                                                self.base_path.parts[1:]))
+
+                self.path = pathlib.Path(*(sync_client_path_parts +
+                                           self.path.parts[1:]))
 
         try:
             self.make_paths_concrete()

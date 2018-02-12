@@ -1224,13 +1224,44 @@ def is_sim_group_processing(sim_group_id, user_cred=None):
     return bool(result['processing_now'])
 
 
+def get_machine_sync_client_path(dropbox_machine_id,
+                                 current_machine_name=CONFIG['machine_name'],
+                                 user_cred=None):
+    """Get path of sync client folder on current machine."""
+
+    user_cred = user_cred or CONFIG['user']
+    user_id = get_user_id(user_cred)
+
+    # Get machine ID of current machine
+    cur_mach_id = get_machine_by_name(
+        current_machine_name, user_cred=user_cred)['id']
+
+    sql = (
+        'select ms.* '
+        'from machine_sync_client_path ms '
+        'inner join machine m on m.id = ms.dropbox_machine_id '
+        'where ms.dropbox_machine_id = %s '
+        'and m.is_dropbox = %s '
+        'and ms.sync_client_machine_id = %s '
+        'and m.user_account_id = %s'
+    )
+    args = (dropbox_machine_id, 1, cur_mach_id, user_id)
+    result = exec_select(sql, args)
+
+    if not result:
+        return False
+
+    return result, current_machine_name
+
+
 def set_sim_group_processing(sim_group_id, is_processing, user_cred=None):
     """Set a sim group to processing state."""
 
     user_cred = user_cred or CONFIG['user']
     user_id = get_user_id(user_cred)
 
-    # First check ownership
+    # First check ownership (MySQL warning raised when doing it in one query
+    # for some reason.)
     sql = (
         'select sg.id from sim_group sg '
         'inner join user_account ua on ua.id = sg.user_account_id '
