@@ -116,7 +116,8 @@ def main(options):
         sim_group.add_run_group(run_group_defn)
 
     # Save current state of sim group as JSON file:
-    sim_group.save_state('stage')
+    sim_group.save_state()
+    dbs.set_sim_group_state_id(sim_group.human_id, 2)
 
     # Copy to scratch
     copy_scratch = sim_group.run_options['copy_to_scratch']
@@ -134,6 +135,6 @@ def main(options):
         sim_group.copy_to_scratch()
 
         # Submit initial run groups on scratch
-        sim_group.auto_submit_initial_runs()
+        sim_group.submit_initial_runs()
 
     print('Finished setting up simulation group: {}'.format(sim_group.human_id))

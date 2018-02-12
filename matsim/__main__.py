@@ -8,7 +8,7 @@ import random
 import yaml
 
 from matsim import (OPTSPEC, MAKESIMS_FN, UPDATE_FN, PROCESS_FN, SEQ_DEFN,
-                    parse_opt, ADD_RG_FN, database as dbs)
+                    parse_opt, ADD_RG_FN, database as dbs, utils)
 from matsim.utils import prt
 
 
@@ -152,4 +152,31 @@ def main(args=sys.argv[1:]):
 
         hid = add_rg_opts.pop('id')
         sim_group = SimGroup.load_state(hid)
-        sim_group.add_run_group(**add_rg_opts)
+        sim_group.add_run_group(add_rg_opts)
+
+        # Save current state of sim group as JSON file:
+        sim_group.save_state()
+
+        sg_state = dbs.get_sim_group_state_id(sim_group.human_id)
+        if sg_state < 2:
+            dbs.set_sim_group_state_id(sim_group.human_id, 2)
+
+        elif sg_state > 2:
+
+            run_groups = sim_group.run_options['groups']
+            new_rg = run_groups[-1]
+            rg_idx = len(run_groups) - 1
+
+            if new_rg['auto_submit'] == 'ask':
+
+                if utils.confirm('Submit run group #{}?'.format(rg_idx)):
+                    sim_group.submit_run_group(rg_idx)
+                else:
+                    print('Run group #{} was NOT submitted.'.format(rg_idx))
+
+            elif new_rg['auto_submit']:
+                print('Auto-submitting run group: #{}'.format(rg_idx))
+                sim_group.submit_run_group(rg_idx)
+
+            else:
+                print('Run group: {} will not be auto-submitted.'.format(rg_idx))

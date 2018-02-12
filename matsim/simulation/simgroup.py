@@ -331,11 +331,34 @@ class SimGroup(object):
 
         return ind[::-1]
 
-    def save_state(self, resource_type, path=None):
+    @classmethod
+    def get_default_state_location(cls, human_id, stage, scratch, archive):
+        """Return either stage or scratch str."""
+
+        state_id = dbs.get_sim_group_state_id(human_id)
+
+        if state_id in [1, 2]:
+            resource_type = 'stage'
+            if CONFIG['machine_name'] != stage.machine_name:
+                raise ValueError('This is not the stage machine.')
+
+        elif state_id in [3, 4, 5]:
+            resource_type = 'scratch'
+            if CONFIG['machine_name'] != scratch.machine_name:
+                raise ValueError('This is not the scratch machine.')
+
+        return resource_type
+
+    def save_state(self, resource_type=None, path=None):
 
         print('Saving SimGroup state -- PENDING')
 
         json_fn = 'sim_group.json'
+
+        if not resource_type:
+            resource_type = SimGroup.get_default_state_location(
+                self.human_id, self.stage, self.scratch, self.archive
+            )
 
         if resource_type == 'stage':
             json_path = self.stage.path.joinpath(json_fn)
@@ -402,15 +425,6 @@ class SimGroup(object):
 
         prt(sg_params, 'sg_params')
 
-        if not resource_type:
-
-            sg_state_id = dbs.get_sim_group_state_id(sg_params['id'])
-
-            if sg_state_id in [1, 2]:
-                resource_type = 'stage'
-            elif sg_state_id in [3, 4, 5]:
-                resource_type = 'scratch'
-
         # Get sim IDs from database as well:
         sims_db = dbs.get_sim_group_sims(sg_params['id'])
 
@@ -424,6 +438,11 @@ class SimGroup(object):
         stage = Stage(stage_name, add_path)
         scratch = Scratch(scratch_name, add_path)
         archive = Archive(archive_name, add_path)
+
+        if not resource_type:
+            resource_type = SimGroup.get_default_state_location(
+                human_id, stage, scratch, archive
+            )
 
         # Now want to open the JSON file:
         json_fn = 'sim_group.json'
@@ -640,7 +659,7 @@ class SimGroup(object):
         rg_defn['job_array'] = job_array
         rg_defn['selective_submission'] = sel_sub
 
-    def auto_submit_initial_runs(self):
+    def submit_initial_runs(self):
         """Submit initial runs according the the run group flag `auto_submit`"""
 
         auto_sub_idx = []
@@ -661,6 +680,7 @@ class SimGroup(object):
             for ask_sub in ask_sub_idx:
                 if utils.confirm('Submit run group #{}?'.format(ask_sub)):
                     self.submit_run_group(ask_sub)
+
                 else:
                     print('Run group #{} was NOT submitted.'.format(ask_sub))
 
@@ -824,6 +844,9 @@ class SimGroup(object):
 
         """
 
+        if dbs.get_sim_group_state_id(self.human_id) < 4:
+            dbs.set_sim_group_state_id(self.human_id, 4)
+
         run_group = self.run_options['groups'][run_group_idx]
 
         # Validation
@@ -934,8 +957,8 @@ class SimGroup(object):
                 submit_process_proc = conn.run_command(
                     cmd, cwd=rg_path, block=False)
 
-                msg = 'Submitting process job to SGE - PENDING {}\r'
-                msg_done = 'Submitting process job to SGE - COMPLETE '
+                msg = 'Submitting process job to SGE - PENDING'
+                msg_done = 'Submitting process job to SGE - COMPLETE'
                 print(msg)
                 while True:
                     if submit_process_proc.poll() is not None:
@@ -981,6 +1004,8 @@ class SimGroup(object):
         run_groups = dbs.get_sim_group_run_groups(self.dbid)
         for rg_id in [i['id'] for i in run_groups]:
             dbs.set_all_run_states(rg_id, 2)
+
+        dbs.set_sim_group_state_id(self.human_id, 3)
 
         print('Copying SimGroup to Scratch -- DONE')
 
