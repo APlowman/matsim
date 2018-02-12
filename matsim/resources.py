@@ -240,6 +240,10 @@ class ResourceConnection(object):
             src_path = self.src.path
             dst_path = self.dst.path
 
+        if not src_path.exists()
+            msg = 'Path {} does not exist.'
+            raise ValueError(msg.format(src_path))
+
         msg = 'Source:      "{}"\nDestination: "{}"\n'
         msg_fmt = [src_path, dst_path]
         if ignore:
