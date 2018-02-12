@@ -845,10 +845,6 @@ class SimGroup(object):
         """
 
         # Need to identify if we're on Stage or Scratch
-
-        if dbs.get_sim_group_state_id(self.human_id) < 4:
-            dbs.set_sim_group_state_id(self.human_id, 4)
-
         run_group = self.run_options['groups'][run_group_idx]
 
         # Validation
@@ -864,9 +860,17 @@ class SimGroup(object):
 
         state_id = dbs.get_sim_group_state_id(self.human_id)
         if state_id in [1, 2]:
-            conn = ResourceConnection(self.stage, self.scratch)
+            src_resource = self.stage
         elif state_id in [3, 4, 5]:
-            conn = ResourceConnection(self.scratch, self.scratch)
+            if self.stage.machine_name == CONFIG['machine_name']:
+                src_resource = self.stage
+            else:
+                src_resource = self.scratch
+
+        conn = ResourceConnection(src_resource, self.scratch)
+
+        if dbs.get_sim_group_state_id(self.human_id) < 4:
+            dbs.set_sim_group_state_id(self.human_id, 4)
 
         jobscript_ext = 'sh' if self.scratch.os_type == 'posix' else 'bat'
         jobscript_fn = 'jobscript.{}'.format(jobscript_ext)
