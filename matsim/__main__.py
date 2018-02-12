@@ -111,7 +111,7 @@ def main(args=sys.argv[1:]):
         # First check if the sim_group is currently being processed.
         # Wait for a random time to split up process invokations which are
         # closely spaced:
-        rand_wait_time = random.random() * 20
+        rand_wait_time = random.random() * 60
         print('Waiting for a random wait time of: {}'.format(rand_wait_time))
         time.sleep(rand_wait_time)
 
