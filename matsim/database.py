@@ -1032,7 +1032,7 @@ def get_software_instance_by_id(software_instance_id, user_cred=None):
         'select si.* , s.name "software_name" '
         'from software_instance si '
         'inner join software s on s.id = si.software_id '
-        'where s.user_account_id = %s and '
+        'where si.user_account_id = %s and '
         'si.id = %s'
     )
     software_inst = exec_select(sql, (user_id, software_instance_id))
