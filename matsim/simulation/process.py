@@ -86,15 +86,19 @@ def main(sim_group, run_group_idx=None, do_update=True, force_process=None):
     run_group_sge_job_id = []
     run_order_id = []
     run_group_is_job_arr = []
+    run_order_in_sim = []
     for pen_run_idx, pen_run in enumerate(pending_process):
 
         # Get path on scratch of run:
         sim_idx = pen_run['sim_order_in_sim_group']
         run_group_idx = pen_run['run_group_order_in_sim_group']
+        run_order_in_sim.append(pen_run['order_in_sim'])
+
         sim_run_idx.append([sim_idx, run_group_idx])
 
         run_group_sge_job_id.append(pen_run['run_group_sge_job_id'])
         run_order_id.append(pen_run['order_in_run_group'])
+
         run_group_is_job_arr.append(bool(pen_run['run_group_sge_job_array']))
 
         run_success = sim_group.check_run_success(sim_idx, run_group_idx)
@@ -110,6 +114,10 @@ def main(sim_group, run_group_idx=None, do_update=True, force_process=None):
 
     # Parse full output and add to sim.results[run_idx]
     for pen_run_idx in no_errs_pen_idx:
+
+        print('parsing result for sim_idx: {}, run_group_order_in_sim_group: {}'.format(
+            *sim_run_idx[pen_run_idx]))
+
         sim_group.parse_result(*sim_run_idx[pen_run_idx])
 
     # Update states to 8 ("process_no_errors")
