@@ -2,11 +2,12 @@
 
 import sys
 import getopt
+import time
 
 import yaml
 
 from matsim import (OPTSPEC, MAKESIMS_FN, UPDATE_FN, PROCESS_FN, SEQ_DEFN,
-                    parse_opt, ADD_RG_FN)
+                    parse_opt, ADD_RG_FN, database as dbs)
 from matsim.utils import prt
 
 
@@ -105,6 +106,21 @@ def main(args=sys.argv[1:]):
             hid, run_group_idx, do_update, force_process_run_idx))
 
         sim_group = SimGroup.load_state(hid, 'scratch')
+
+        # First check if the sim_group is currently being processed.
+        msg = ('Another processing instance is currently working on this '
+               'SimGroup. Waiting for {} seconds for this to finish.')
+        wait_time = 5
+        reload_sim_group = False
+        while dbs.is_sim_group_processing(sim_group.dbid):
+            reload_sim_group = True
+            print(msg.format(wait_time))
+            time.sleep(wait_time)
+
+        # Reload
+        if reload_sim_group:
+            sim_group = SimGroup.load_state(hid, 'scratch')
+
         proc_args = {
             'sim_group': sim_group,
             'run_group_idx': run_group_idx,
