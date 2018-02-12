@@ -1086,9 +1086,15 @@ class SimGroup(object):
         run_path = self.get_run_path(sim_idx, run_group_idx)
         run_path_full = self.scratch.path.joinpath(*run_path)
 
-        run_idx = utils.dict_from_list(
-            self.sims[sim_idx].runs,
-            {'run_group_order_in_sim_group': run_group_idx}
+        sim = self.sims[sim_idx]
+
+        run_order_in_sim = utils.dict_from_list(
+            sim.runs, {'run_group_order_in_sim_group': run_group_idx}
         )['run_order_in_sim']
 
-        self.sims[sim_idx].parse_result(run_path_full, run_idx)
+        run_res = sim.runs[run_order_in_sim]['result']
+        if run_res:
+            msg = 'Result has already been parsed for run_idx {}'
+            raise ValueError(msg.format(run_order_in_sim))
+
+        sim.parse_result(run_path_full, run_order_in_sim)

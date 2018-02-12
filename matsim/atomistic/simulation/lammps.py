@@ -184,11 +184,6 @@ class LammpsSimulation(AtomisticSimulation):
     def parse_result(self, path, run_idx):
         """Parse results from path and add to runs[run_idx]['result']"""
 
-        run_res = self.runs[run_idx]['result']
-        if run_res:
-            msg = 'Result has already been parsed for run_idx {}'
-            raise ValueError(msg.format(run_idx))
-
         out = lammpsio.read_lammps_output(path)
         self.runs[run_idx]['result'] = out
 
