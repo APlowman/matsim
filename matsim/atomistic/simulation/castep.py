@@ -241,7 +241,7 @@ class CastepSimulation(AtomisticSimulation):
             # Add to `atm_sim` table:
             atm_sim_params = {
                 'supercell_type': supercell_type,
-                'repeats': json.dumps(repeats),
+                'repeats': json.dumps(repeats.tolist()),
                 'num_atoms': cst['num_ions'],
                 'path': path,
                 'atom_constraints': atm_constraints,
