@@ -1,10 +1,11 @@
 """matsim.atomistic.simulation.castep.py"""
 
 import copy
+import json
 
 import numpy as np
 
-from matsim import utils
+from matsim import utils, database_atm as dbs_atm
 from matsim.atomistic.software import castep as castepio
 from matsim.atomistic.simulation import SUPERCELL_TYPE_LOOKUP
 from matsim.atomistic.simulation.sim import AtomisticSimulation
@@ -169,5 +170,108 @@ class CastepSimulation(AtomisticSimulation):
     def parse_result(self, path, run_idx):
         """Parse results from path and add to runs[run_idx]['result']"""
 
-        out = castepio.read_castep_output(path)
-        self.runs[run_idx]['result'] = out
+        cst = castepio.read_castep_output(path)
+        self.runs[run_idx]['result'] = cst
+
+        cst_params = cst['params']
+
+        cst_sim_param_names = [
+            'cut_off_energy',
+            'kpoint_num',
+            'kpoint_mp_grid',
+            'kpoint_mp_offset',
+            'xc_functional',
+            'mixing_scheme',
+            'metals_method',
+            'smearing_width',
+            'geom_method',
+        ]
+        cst_run_param_names = [
+            'elec_energy_tol',
+            'opt_strategy',
+            'geom_energy_tol',
+            'geom_force_tol',
+            'geom_disp_tol',
+            'geom_stress_tol',
+        ]
+        cst_json_param_names = [
+            'kpoint_mp_grid',
+            'kpoint_mp_offset',
+        ]
+
+        # Need to add to table `atm_run_castep`, and if not already
+        # added, also `atm_sim`, `atm_sim_castep`
+
+        atm_sim = dbs_atm.get_atm_sim_by_sim_id(self.dbid)
+
+        if atm_sim:
+
+            atm_sim_id = atm_sim['id']
+            atm_sim_castep_id = dbs_atm.get_atm_sim_castep_by_atm_sim_id(
+                atm_sim_id
+            )['id']
+
+        else:
+
+            # Supercell type
+            sup_types = self.structure.meta['supercell_type']
+            if 'bicrystal' in sup_types:
+                supercell_type = 'gb'
+            elif 'bulk_bicrystal' in sup_types:
+                supercell_type = 'gb_bulk'
+            elif 'surface_bicrystal' in sup_types:
+                supercell_type = 'gb_surface'
+            elif 'bulk' in sup_types:
+                supercell_type = 'bulk'
+            elif 'surface' in sup_types:
+                supercell_type = 'surface'
+
+            # Unit repeats in the supercell
+            repeats = None
+            if supercell_type == 'bulk':
+                repeats = self.options['structure']['box_lat']
+            elif supercell_type.startswith('gb'):
+                # For a CSL GB, this is `gb_size` * identity matrix
+                repeats = self.options['structure']['gb_size']
+
+            # Atom constraints. Not sure if this is right, but we're saying 3
+            # are for CoM:
+            atm_constraints = (cst['params']['ion_constraints_num'] > 3)
+
+            # Add to `atm_sim` table:
+            atm_sim_params = {
+                'supercell_type': supercell_type,
+                'repeats': repeats,
+                'num_atoms': cst['num_ions'],
+                'path': path,
+                'atom_constraints': atm_constraints,
+                'software': 'castep'
+            }
+            atm_sim_id = dbs_atm.add_atm_sim(atm_sim_params, self.dbid)
+
+            # Add to `atm_sim_castep` table:
+            castep_sim_params = {
+                'task': cst_params['calc_type']
+            }
+            for par_name in cst_sim_param_names:
+
+                par = cst_params[par_name]
+                if par_name in cst_json_param_names:
+                    par = json.dumps(par)
+                castep_sim_params.update({par_name: par})
+
+            atm_sim_castep_id = dbs_atm.add_atm_sim_castep(
+                atm_sim_id, castep_sim_params)
+
+        # Add to the `atm_run_castep` table
+        castep_run_params = {}
+        for par_name in cst_run_param_names:
+
+            par = cst_params[par_name]
+            if par_name in cst_json_param_names:
+                par = json.dumps(par)
+
+            castep_run_params.update({par_name: par})
+
+        dbs_atm.add_atm_run_castep(
+            atm_sim_castep_id, castep_run_params, self.runs[run_idx]['dbid'])

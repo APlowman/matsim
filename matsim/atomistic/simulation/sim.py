@@ -214,3 +214,6 @@ class AtomisticSimulation(Simulation):
             opt_structure.tile_supercell(tile)
 
         return opt_structure
+
+    def parse_atomistic_parameters(self):
+        pass

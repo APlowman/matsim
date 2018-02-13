@@ -746,6 +746,7 @@ class SimGroup(object):
                 'run_order_in_run_group': idx,
                 'run_order_in_sim': run_order_in_sim,
                 'run_params': run_group_defn['run_params'],
+                'dbid': run_group_defn['dbid'],
                 'result': None
             }
             sim.runs.append(sim_run_defn)
@@ -1128,10 +1129,9 @@ class SimGroup(object):
             sim.runs, {'run_group_order_in_sim_group': run_group_idx}
         )['run_order_in_sim']
 
-        print('in sg parse result')
-        prt(run_path, 'run_path')
-        prt(run_path_full, 'run_path_full')
-        prt(run_order_in_sim, 'run_order_in_sim')
+        # prt(run_path, 'run_path')
+        # prt(run_path_full, 'run_path_full')
+        # prt(run_order_in_sim, 'run_order_in_sim')
 
         run_res = sim.runs[run_order_in_sim]['result']
         if run_res:
