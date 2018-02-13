@@ -273,5 +273,7 @@ class CastepSimulation(AtomisticSimulation):
 
             castep_run_params.update({par_name: par})
 
+        print('castep run params: {}'.format(castep_run_params))
+
         dbs_atm.add_atm_run_castep(
             atm_sim_castep_id, castep_run_params, self.runs[run_idx]['dbid'])

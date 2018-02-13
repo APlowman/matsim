@@ -380,6 +380,10 @@ def add_atm_run_castep(atm_sim_castep_id, cst_params, run_id=None):
         'insert into atm_run_castep ({}) values ({})'
     ).format(fields_run_cst, values_run_cst)
 
+    prt(sql_run_cst, 'sql_run_cst')
+    prt(args_run_cst, args_run_cst)
+    exit()
+
     atm_run_castep_id = dbs.exec_insert(sql_run_cst, tuple(args_run_cst))
 
     return atm_run_castep_id
