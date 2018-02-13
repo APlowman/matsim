@@ -66,11 +66,11 @@ def validate_new_atm_sim(params):
 
     not_none = ['repeats', 'supercell_type', 'num_atoms', 'path']
     for key in not_none:
-        if not params.get(key):
+        if params.get(key) is None:
             raise ValueError('Key "{}" must not be `None`'.format(key))
 
 
-def add_atm_sim(params, sim_id=None, run_id=None, user_cred=None):
+def add_atm_sim(params, sim_id=None, user_cred=None):
     """Add atomistic simulation to the database.
 
     `sim_id` and `run_id` are passed if adding from matsim, and are not passed if
