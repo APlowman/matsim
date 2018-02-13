@@ -746,7 +746,6 @@ class SimGroup(object):
                 'run_order_in_run_group': idx,
                 'run_order_in_sim': run_order_in_sim,
                 'run_params': run_group_defn['run_params'],
-                'dbid': run_group_defn['dbid'],
                 'result': None
             }
             sim.runs.append(sim_run_defn)
@@ -774,11 +773,31 @@ class SimGroup(object):
 
         if resource_type == 'stage':
             rg_path_resource = rg_path_stage
+            run_state = 1
         elif resource_type == 'scratch':
             rg_path_resource = rg_path_scratch
+            run_state = 2
 
         rg_path_resource.mkdir(parents=True)
 
+        # Add run group to the database:
+        rg_db = dbs.add_run_group(self.dbid, run_group_defn, sim_dbids,
+                                  run_order_in_sims, run_state,
+                                  self.scratch.sge)
+        run_group_defn.update({
+            'dbid': rg_db[0]
+        })
+
+        # Add to the run groups list:
+        self.run_options['groups'].append(run_group_defn)
+
+        # Add run database IDs to sim runs dict
+        for sim_idx, run_inserts in zip(run_group_defn['sim_idx'], rg_db[2]):
+            self.sims[sim_idx].runs[-1].update({
+                'dbid': run_inserts[0]
+            })
+
+        # Write jobscript files:
         soft_inst = run_group_defn['software_instance']
         js_params = {
             'path': str(rg_path_resource),
@@ -812,22 +831,6 @@ class SimGroup(object):
                 'selective_submission': run_group_defn['selective_submission'],
             }
             write_process_jobscript(**pjs_params)
-
-        # Add run group to the database:
-        if resource_type == 'stage':
-            run_state = 1
-        elif resource_type == 'scratch':
-            run_state = 2
-
-        rg_db = dbs.add_run_group(self.dbid, run_group_defn, sim_dbids,
-                                  run_order_in_sims, run_state,
-                                  self.scratch.sge)
-        run_group_defn.update({
-            'dbid': rg_db[0]
-        })
-
-        # Add to the run groups list:
-        self.run_options['groups'].append(run_group_defn)
 
     def submit_run_group(self, run_group_idx, run_idx=None):
         """Submit a run groups on Scratch. Can be invoked either on
