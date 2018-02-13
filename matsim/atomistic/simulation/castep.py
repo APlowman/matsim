@@ -243,7 +243,7 @@ class CastepSimulation(AtomisticSimulation):
                 'supercell_type': supercell_type,
                 'repeats': json.dumps(repeats.tolist()),
                 'num_atoms': cst['num_ions'],
-                'path': path,
+                'path': str(path),
                 'atom_constraints': atm_constraints,
                 'software': 'castep'
             }
