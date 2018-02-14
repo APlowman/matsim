@@ -1115,11 +1115,6 @@ class SimGroup(object):
             raise ValueError('This machine does not have the same ID as that '
                              'of the Scratch associated with this SimGroup.')
 
-    def add_runs(self, opt):
-        """Add additional run to one or more simulation on scratch."""
-
-        # Need to check current machine is Scratch machine (config.yml)
-
     def get_sim_path(self, sim_idx):
         """Get the path to a simulation directory.
 
