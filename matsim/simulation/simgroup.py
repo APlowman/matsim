@@ -386,24 +386,44 @@ class SimGroup(object):
 
         print('Saving SimGroup state -- DONE')
 
+    def get_base_sim(self):
+        """Return the base Simulation, on which sequences are based."""
+        sim_opt = copy.deepcopy(self.base_sim_options)
+        base_sim = SOFTWARE_CLASS_MAP[self.software](sim_opt)
+
+        base_sim.options.update({
+            'sequence_id': {
+                'names': [],
+                'paths': [],
+                'vals': [],
+                'nest_idx': [],
+            }
+        })
+
+        return base_sim
+
     def generate_sim_group_sims(self):
         """Generate a list of simulations."""
 
         print('Generating Simulation objects -- PENDING')
-        sims = []
-        for sim_upds_idx, sim_upds in enumerate(self.sim_updates):
 
-            print('GEN SIM: {}'.format(sim_upds_idx))
+        sims = []
+        for _, sim_upds in enumerate(self.sim_updates):
+
             sim_opt = copy.deepcopy(self.base_sim_options)
 
-            for upd in sim_upds:
-                sim_opt = apply_base_update(sim_opt, upd)
+            if sim_upds:
+                for upd in sim_upds:
+                    sim_opt = apply_base_update(sim_opt, upd)
+                sim = SOFTWARE_CLASS_MAP[self.software](sim_opt)
+            else:
+                print('Adding just the base sim to the sims list.')
+                sim = self.get_base_sim()
 
-            sim = SOFTWARE_CLASS_MAP[self.software](sim_opt)
             sims.append(sim)
 
-        print('Generating Simulation objects -- DONE')
         self.sims = sims
+        print('Generating Simulation objects -- DONE')
 
     @classmethod
     def load_state(cls, human_id, resource_type=None):
@@ -486,38 +506,74 @@ class SimGroup(object):
         return cls(**state)
 
     def make_visualisations(self):
-        """Add plots to the simulation directories on stage."""
+        """Add plots to the simulation directories on stage.
 
-        # Get the deepest sequence nest index whose values affect the structure
-        affect_struct = [i.affects_structure for i in self.sequences]
-        deepest_idx = len(affect_struct) - affect_struct[::-1].index(True) - 1
+        TODO: this code shouldn't reference atomistic structure here; maybe
+        expose a Simulaton.visualise method which is invoked here and pass 
+        the visualise options dict as kwargs to that.
+
+        """
+
+        save_opt = self.vis_options['save']
+        vis_opt_args = {key: val for key, val in self.vis_options.items()
+                        if key != 'save'}
 
         all_plot_paths = []
-        vis_path_final = ''
-        for sim_idx, sim in enumerate(self.sims):
+        make_seq_plots = True
 
-            sim_path = self.get_sim_path(sim_idx)
-            vis_path = sim_path[:(deepest_idx + 2)]
+        if save_opt in ['sequences', 'all']:
 
-            if vis_path[-1] != vis_path_final:
+            # Get the deepest sequence nest index whose values affect the structure
+            affect_struct = [i.affects_structure for i in self.sequences]
+            prt(affect_struct, 'affect_struct')
 
-                vis_path_final = vis_path[-1]
-                vis_dir_path = self.stage.path.joinpath(*vis_path, 'plots')
-                vis_dir_path.mkdir(parents=True)
-                plot_path = str(vis_dir_path.joinpath('structure.html'))
-                all_plot_paths.append(vis_path + ['plots'])
-                vis_args = {
-                    'save': True,
-                    'save_args': {
-                        'filename': plot_path
-                    },
-                    'plot_2d': 'xyz',
-                    'group_atoms_by': self.vis_options.get('group_atoms_by'),
-                    'style': self.vis_options.get('style'),
-                }
-                sim.structure.visualise(**vis_args)
+            make_seq_plots = affect_struct and True in affect_struct
+            if make_seq_plots:
+                deepest_idx = (len(affect_struct) -
+                               affect_struct[::-1].index(True) - 1)
 
-        return all_plot_paths
+                prt(deepest_idx, 'deepest_idx')
+
+                vis_path_final = ''
+                for sim_idx, sim in enumerate(self.sims):
+
+                    sim_path = self.get_sim_path(sim_idx)
+                    vis_path = sim_path[:(deepest_idx + 2)]
+
+                    if vis_path[-1] != vis_path_final:
+
+                        vis_path_final = vis_path[-1]
+                        vis_dir_path = self.stage.path.joinpath(
+                            *vis_path, 'plots'
+                        )
+                        vis_dir_path.mkdir(parents=True)
+                        plot_path = str(
+                            vis_dir_path.joinpath('structure.html')
+                        )
+                        all_plot_paths.append(vis_path + ['plots'])
+                        vis_args = {
+                            'save': True,
+                            'save_args': {'filename': plot_path},
+                            **vis_opt_args,
+                        }
+                        sim.structure.visualise(**vis_args)
+
+        if save_opt in ['base', 'all'] or not make_seq_plots:
+
+            # Save a base simulation visualisation:
+            vis_dir_path = self.stage.path.joinpath('plots')
+            vis_dir_path.mkdir()
+            plot_path = str(vis_dir_path.joinpath('structure.html'))
+            all_plot_paths.append(['plots'])
+            vis_args = {
+                'save': True,
+                'save_args': {'filename': plot_path},
+                **vis_opt_args,
+            }
+            base_sim = self.get_base_sim()
+            base_sim.structure.visualise(**vis_args)
+
+        self.vis_options['all_plot_paths'] = all_plot_paths
 
     def initialise(self):
         """Write helper files on stage and add sim group to database."""
@@ -549,7 +605,7 @@ class SimGroup(object):
             sim_params, stage_path, scratch_path)
 
         self.generate_sim_group_sims()
-        self._all_plot_paths = self.make_visualisations()
+        self.make_visualisations()
 
         print('Writing initial files -- DONE')
 
@@ -1012,7 +1068,7 @@ class SimGroup(object):
 
         # Copy plots directly to archive:
         conn_arch = ResourceConnection(self.stage, self.archive)
-        for plot_path in self._all_plot_paths:
+        for plot_path in self.vis_options['all_plot_paths']:
             conn_arch.copy_to_dest(subpath=plot_path)
 
         # Change state of all runs to 2 ("pending_run")
@@ -1073,24 +1129,28 @@ class SimGroup(object):
             Index of simulation within the group.
 
         """
+
         seq_id = self.sims[sim_idx].options['sequence_id']
-
         path = []
-        nest_idx = seq_id['nest_idx'][0] - 1
 
-        for sid_idx in range(len(seq_id['paths'])):
+        if seq_id['nest_idx']:
 
-            add_path = seq_id['paths'][sid_idx]
+            nest_idx = seq_id['nest_idx'][0] - 1
 
-            if self.path_options['sequence_names']:
-                add_path = seq_id['names'][sid_idx] + '_' + add_path
+            for sid_idx in range(len(seq_id['paths'])):
 
-            if seq_id['nest_idx'][sid_idx] == nest_idx:
-                path[-1] += self.path_options['parallel_sims_join'] + add_path
-            else:
-                path.append(add_path)
+                add_path = seq_id['paths'][sid_idx]
 
-            nest_idx = seq_id['nest_idx'][sid_idx]
+                if self.path_options['sequence_names']:
+                    add_path = seq_id['names'][sid_idx] + '_' + add_path
+
+                if seq_id['nest_idx'][sid_idx] == nest_idx:
+                    path[-1] += self.path_options['parallel_sims_join']
+                    path[-1] += add_path
+                else:
+                    path.append(add_path)
+
+                nest_idx = seq_id['nest_idx'][sid_idx]
 
         if self.path_options['sim_numbers']:
             path_labs = self.get_path_labels(sim_idx)

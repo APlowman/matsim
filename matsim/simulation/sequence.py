@@ -21,6 +21,7 @@ def merge_parallel_seqences(sequences):
     """Get sequence updates, merging those from parallel sequences (those with
     the same `nest_idx`), and sort by `nest_idx`.
 
+    TODO: check if i need to sort, probably not now since i've sorted sequences
     """
 
     seq_upds_mergd = {}
@@ -43,8 +44,9 @@ def get_sim_updates(seq_options, base_sim):
     """Get a list of updates required to form each simulation in the group."""
 
     sequences = [SimSequence(i, base_sim) for i in seq_options]
-    seq_upds = merge_parallel_seqences(sequences)
+    sequences.sort(key=lambda x: x.nest_idx)
 
+    seq_upds = merge_parallel_seqences(sequences)
     grp_upd = nest(*seq_upds)
 
     sim_updates = []
