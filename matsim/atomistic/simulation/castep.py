@@ -14,7 +14,7 @@ from matsim.atomistic.simulation.sim import AtomisticSimulation
 class CastepSimulation(AtomisticSimulation):
     """Class to represent a CASTEP simulation."""
 
-    def __init__(self, options):
+    def __init__(self, options, import_data=None):
         """Initialise a CastepSimulation."""
         super().__init__(options)
         self._process_options()

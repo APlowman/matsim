@@ -4,11 +4,129 @@ import copy
 
 from matsim import database as dbs
 from matsim import utils, CONFIG
-from matsim.utils import prt
+from matsim.utils import prt, get_recursive
 from matsim.resources import Stage, Scratch, Archive, ResourceConnection
 from matsim.simulation import apply_base_update
 from matsim.simulation.sequence import get_sim_updates
 from matsim.simulation.simgroup import SimGroup, SOFTWARE_CLASS_MAP
+
+IMPORT_MAP = [
+    {
+        'condition': (['params', 'castep', 'continuation'], ['*']),
+        'import_files': ['*.check'],
+        'import_args': {}
+    },
+    {
+        'condition': (['params', 'castep', 'reuse'], ['*']),
+        'import_files': ['*.check'],
+        'import_args': {}
+    },
+    {
+        'condition': (['params', 'optados', 'task'], ['*']),
+        'import_files': ['*.bands'],
+        'import_args': {}
+    },
+    {
+        'condition': (['params', 'optados', 'task'], ['pdos']),
+        'import_files': ['*.pdos_bin'],
+        'import_args': {}
+    },
+    {
+        'condition': (['params', 'optados', 'broadening'], ['adaptive', 'linear']),
+        'import_files': ['*ome_bin'],
+        'import_args': {}
+    },
+    {
+        'condition': (['structure', 'source'], ['import']),
+        'import_files': [],
+        'import_args': {
+            'opt_idx': ['structure', 'import', 'opt_idx'],
+        }
+    },
+]
+
+
+def process_imports(import_options, base_sim_options):
+    """Sort out SimGroup imports."""
+
+    # multiple import_options dict ==> one import_data dict
+    # Add `import_file_paths` to import_data containing paths of copied files
+
+    prt(base_sim_options, 'base_sim_options')
+
+    matching_imp = {
+        'import_files': [],
+        'import_args': {},
+    }
+
+    # Find if any conditions in the `IMPORT_MAP` are matched in `base_sim_options`:
+    for imp_map in IMPORT_MAP:
+
+        # prt(imp_map['condition'][0], "imp_map['condition'][0]")
+        # prt(imp_map['condition'][1], "imp_map['condition'][1]")
+
+        try:
+            cnd_val = get_recursive(base_sim_options, imp_map['condition'][0])
+            # prt(cnd_val, 'cnd_val')
+
+            if cnd_val in imp_map['condition'][1]:
+
+                matching_imp['import_files'].extend(
+                    copy.copy(imp_map['import_files'])
+                )
+
+                # Resolve any import args
+                for key, val in imp_map['import_args'].items():
+
+                    res_val = get_recursive(base_sim_options, val)
+                    matching_imp['import_args'].update({
+                        key: res_val
+                    })
+
+        except AttributeError as _:
+            continue
+
+    prt(matching_imp, 'matching_imp')
+
+    # Instantiate import Simulations
+
+    import_data = [
+        copy.deepcopy(matching_imp)
+        for _ in enumerate(import_options['runs'])
+    ]
+
+    # Assume import options within the base_sim_options are lists of the same
+    # length as the import options runs list:
+    for idx, imp_dat in enumerate(import_data):
+        for key, val in imp_dat['import_args'].items():
+            import_data[idx]['import_args'][key] = val[idx]
+
+    res_type = import_options['source']
+
+    # First load sim groups
+    imp_sim_groups = []
+    for imp_idx, imp_hid in enumerate(import_options['sim_groups']):
+        imp_sg = SimGroup.load_state(imp_hid, resource_type=res_type)
+        imp_sim_groups.append(imp_sg)
+
+    prt(imp_sim_groups, 'imp_sim_groups')
+
+    for imp_idx, imp_run in enumerate(import_options['runs']):
+
+        sim_idx = imp_run['sim_idx']
+        run_group_idx = imp_run['run_group_idx']
+        sg_idx = imp_run['sim_group_idx']
+        sim_group = imp_sim_groups[sg_idx]
+
+        import_data[imp_idx].update({
+            'sim': sim_group.sims[sim_idx],
+            'run_group_idx': run_group_idx,
+            'run_path': sim_group.get_run_path(sim_idx, run_group_idx),
+        })
+
+    prt(import_data, 'import_data')
+
+    exit()
 
 
 def validate_run_options(run_options):
@@ -60,10 +178,9 @@ def make_new_simgroup(options):
 
     path_options = options.pop('path_options')
     vis_options = options.pop('visualise')
-    # TODO: deal with importing structure (and group):
-    # import_options = options.pop('import_options')
     run_options = options.pop('run')
     seq_options = options.pop('sequences')
+    import_options = options.pop('import')
 
     # All remaning options are base simulation options:
     base_sim_options = options
@@ -82,6 +199,8 @@ def make_new_simgroup(options):
     run_options['archive'] = Archive(run_options['archive'], add_path)
 
     validate_run_options(run_options)
+    if import_options:
+        process_imports(import_options, base_sim_options)
 
     sim_class = SOFTWARE_CLASS_MAP[run_options['software']]
     base_sim = sim_class(base_sim_options)

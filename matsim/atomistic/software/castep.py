@@ -1642,6 +1642,9 @@ def map_species_to_castep(species, species_idx):
 
     return map_idx
 
+def check_success(dir_path):
+    """Some checks for success."""
+    # Is there a .bib file?
 
 def check_success_single_point(dir_path):
     """Check if the files in a given directory are indicative of

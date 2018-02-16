@@ -408,6 +408,11 @@ class SimGroup(object):
         print('Generating Simulation objects -- PENDING')
 
         sims = []
+
+        # Need to add extra outer loop for multiple imports.
+        # If we are importing an Atomistic structure, could pass imported
+        # structure in as an options['structure'] option, which is then
+        # returned correctly in generate_structure.
         for _, sim_upds in enumerate(self.sim_updates):
 
             sim_opt = copy.deepcopy(self.base_sim_options)
