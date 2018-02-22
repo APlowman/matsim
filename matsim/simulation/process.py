@@ -55,13 +55,13 @@ def main(sim_group, run_group_idx=None, do_update=True, force_process=None):
 
     if force_process:
         rg_id = database.get_sim_group_run_groups(sg_id)[run_group_idx]['id']
-        prt(rg_id, 'rg_id')
+        # prt(rg_id, 'rg_id')
 
         rg_runs = database.get_run_group_runs(rg_id)
-        prt(rg_runs, 'rg_runs')
+        # prt(rg_runs, 'rg_runs')
 
         force_run_ids = [rg_runs[i]['id'] for i in force_process]
-        prt(force_run_ids, 'force_run_ids')
+        # prt(force_run_ids, 'force_run_ids')
 
         database.set_many_run_states(force_run_ids, 6)
 
@@ -71,8 +71,8 @@ def main(sim_group, run_group_idx=None, do_update=True, force_process=None):
     pending_process = database.get_sim_group_runs(sg_id, [6, 8])
 
     print('Found {} run(s) to process.'.format(len(pending_process)))
-    prt(pending_process, 'pending_process runs')
-    prt(run_group_idx, 'run_group_idx')
+    # prt(pending_process, 'pending_process runs')
+    # prt(run_group_idx, 'run_group_idx')
 
     if run_group_idx:
 
@@ -85,7 +85,7 @@ def main(sim_group, run_group_idx=None, do_update=True, force_process=None):
 
         pending_process = pending_process_rg
 
-    prt(pending_process, 'pending_process')
+    # prt(pending_process, 'pending_process')
 
     # Set state to 7 ("processing") for these runs
     run_ids = [i['id'] for i in pending_process]
@@ -165,35 +165,36 @@ def main(sim_group, run_group_idx=None, do_update=True, force_process=None):
                 # Need to form log stdout/err filenames:
                 # Need SGE job_id from table `run_group_sge`
                 sge_job_id_str = str(run_group_sge_job_id[pen_run_idx])
-                prt(sge_job_id_str, 'sge_job_id_str')
+                # prt(sge_job_id_str, 'sge_job_id_str')
 
                 rg_idx_str = str(sim_run_idx[pen_run_idx][1])
-                prt(rg_idx_str, 'rg_idx_str')
+                # prt(rg_idx_str, 'rg_idx_str')
 
                 stdoe_fn = sim_group.name + '_' + rg_idx_str + '.{}' + sge_job_id_str
 
                 if run_group_is_job_arr[pen_run_idx]:
                     r_idx_str = str(run_order_id[pen_run_idx] + 1)
-                    prt(r_idx_str, 'r_idx_str')
+                    # prt(r_idx_str, 'r_idx_str')
 
                     stdoe_fn += '.' + r_idx_str
 
                 stdout_fn = stdoe_fn.format('o')
                 stderr_fn = stdoe_fn.format('e')
 
-                prt(stdoe_fn, 'stdoe_fn')
-                prt(stdout_fn, 'stdout_fn')
-                prt(stderr_fn, 'stderr_fn')
+                # prt(stdoe_fn, 'stdoe_fn')
+                # prt(stdout_fn, 'stdout_fn')
+                # prt(stderr_fn, 'stderr_fn')
 
-                stdeo_path = ['run_groups', rg_idx_str, 'sge']
-                prt(stdeo_path, 'stdeo_path')
+                stdeo_path = [sim_group.path_options['run_groups_dir_name'],
+                              rg_idx_str, 'sge']
+                # prt(stdeo_path, 'stdeo_path')
 
                 stdout_path = stdeo_path + [stdout_fn]
                 stderr_path = stdeo_path + [stderr_fn]
 
-                prt(stdeo_path, 'stdeo_path')
-                prt(stdout_path, 'stdout_path')
-                prt(stderr_path, 'stderr_path')
+                # prt(stdeo_path, 'stdeo_path')
+                # prt(stdout_path, 'stdout_path')
+                # prt(stderr_path, 'stderr_path')
 
                 arch_conn.copy_to_dest(subpath=stdout_path)
                 arch_conn.copy_to_dest(subpath=stderr_path)

@@ -1323,8 +1323,8 @@ def add_sim_group(sim_group, user_cred=None):
         False
     )
 
-    prt(sql, 'sql')
-    prt(args, 'args')
+    # prt(sql, 'sql')
+    # prt(args, 'args')
 
     sg_id = exec_insert(sql, args)
     sim_group.dbid = sg_id
