@@ -55,7 +55,7 @@ class Bicrystal(AtomisticStructure):
 
     def __init__(self, as_params=None, maintain_inv_sym=False, reorient=False,
                  boundary_vac=None, relative_shift=None,
-                 wrap=True, non_gb_idx=None, rot_mat=None):
+                 wrap=True, non_boundary_idx=None, rot_mat=None):
 
         # Call parent constructor
         super().__init__(**as_params)
@@ -65,7 +65,7 @@ class Bicrystal(AtomisticStructure):
 
         # Non-boundary (column) index of `box_csl` and grain arrays
         gb_idx = [0, 1, 2]
-        gb_idx.remove(non_gb_idx)
+        gb_idx.remove(non_boundary_idx)
 
         # Boundary normal vector:
         n = np.cross(self.supercell[:, gb_idx[0]],
@@ -73,14 +73,14 @@ class Bicrystal(AtomisticStructure):
         n_unit = n / np.linalg.norm(n)
 
         # Non-boundary supercell unit vector
-        u = self.supercell[:, non_gb_idx][:, None]
+        u = self.supercell[:, non_boundary_idx][:, None]
         u_unit = u / np.linalg.norm(u)
 
         # Set instance Bicrystal-specific attributes:
         self.maintain_inv_sym = maintain_inv_sym
         self.n_unit = n_unit
         self.u_unit = u_unit
-        self.non_boundary_idx = non_gb_idx
+        self.non_boundary_idx = non_boundary_idx
         self.boundary_idx = gb_idx
         self.boundary_vac = 0
         self.boundary_vac_type = None
@@ -581,20 +581,20 @@ def csl_bicrystal_from_parameters(crystal_structure, csl_vecs, box_csl=None,
     csl_vecs_std = [np.dot(lat_vecs, c) for c in csl_vecs]
 
     # Non-boundary (column) index of `box_csl` and grain arrays:
-    non_gb_idx = 2
+    non_boundary_idx = 2
 
     # Enforce a rule that out of boundary grain vector has to be
     # (a multiple of) a single CSL unit vector. This reduces the
     # potential "skewness" of the supercell.
-    if np.count_nonzero(box_csl[:, non_gb_idx]) > 1:
+    if np.count_nonzero(box_csl[:, non_boundary_idx]) > 1:
         raise ValueError('The out of boundary vector, `box_csl[:, {}]`'
                          ' must have exactly one non-zero '
-                         'element.'.format(non_gb_idx))
+                         'element.'.format(non_boundary_idx))
 
     # Scale grains in lattice basis
     grn_a_lat = np.dot(csl_vecs[0], box_csl)
     grn_b_lat = np.dot(csl_vecs[1], box_csl)
-    grn_b_lat[:, non_gb_idx] *= -1
+    grn_b_lat[:, non_boundary_idx] *= -1
 
     # Get grain vectors in standard Cartesian basis
     grn_a_std = np.dot(lat_vecs, grn_a_lat)
@@ -636,7 +636,7 @@ def csl_bicrystal_from_parameters(crystal_structure, csl_vecs, box_csl=None,
             ['10', '10', '10'],
             ['10', '10', '10']
         ]
-        edge_conditions[1][non_gb_idx] = '01'
+        edge_conditions[1][non_boundary_idx] = '01'
 
     # Make two crystal boxes:
     crys_a = CrystalBox(crystal_structure, grn_a_std,
@@ -648,7 +648,7 @@ def csl_bicrystal_from_parameters(crystal_structure, csl_vecs, box_csl=None,
     crys_b.rotate(rot_mat)
 
     # Shift crystals to form a supercell at the origin
-    zero_shift = -crys_b.box_vecs[:, non_gb_idx][:, None]
+    zero_shift = -crys_b.box_vecs[:, non_boundary_idx][:, None]
     crys_a.translate(zero_shift)
     crys_b.translate(zero_shift)
 
@@ -692,8 +692,8 @@ def csl_bicrystal_from_parameters(crystal_structure, csl_vecs, box_csl=None,
 
     # Define the supercell:
     sup_std = np.copy(crys_a.box_vecs)
-    sup_std[:, non_gb_idx] = (crys_a.box_vecs[:, non_gb_idx] -
-                              crys_b.box_vecs[:, non_gb_idx])
+    sup_std[:, non_boundary_idx] = (crys_a.box_vecs[:, non_boundary_idx] -
+                                    crys_b.box_vecs[:, non_boundary_idx])
 
     crystals = [
         {
@@ -734,7 +734,7 @@ def csl_bicrystal_from_parameters(crystal_structure, csl_vecs, box_csl=None,
         'boundary_vac': boundary_vac,
         'relative_shift': relative_shift,
         'wrap': wrap,
-        'non_gb_idx': 2,
+        'non_boundary_idx': 2,
         'rot_mat': rot_mat,
     }
 
@@ -1040,7 +1040,7 @@ def mon_bicrystal_180_u0w(crystal_structure, gb_params, overlap_tol=0.1,
         'boundary_vac': boundary_vac,
         'relative_shift': relative_shift,
         'wrap': wrap,
-        'non_gb_idx': 0,
+        'non_boundary_idx': 0,
         #         'rot_mat': rot_mat, what is this?
     }
 
