@@ -24,37 +24,60 @@ def merge_parallel_seqences(sequences):
     TODO: check if i need to sort, probably not now since i've sorted sequences
     """
 
+    # prt(sequences, 'sequences')
+
     seq_upds_mergd = {}
     for seq in sequences:
+
+        # prt(seq, 'seq')
 
         nest_idx = seq.nest_idx
         upds = seq.updates
 
         if nest_idx in seq_upds_mergd:
+            # print('nest_idx in seq_upds')
             seq_upds_mergd[nest_idx] = merge(seq_upds_mergd[nest_idx], upds)
         else:
+            # print('nest_idx NOT in seq_upds')
+            # prt(upds, 'upds')
             seq_upds_mergd.update({nest_idx: upds})
+
+        prt(readwrite.format_dict(seq_upds_mergd), 'seq_upds_mergd')
+
+    # exit()
 
     seq_upds_srtd = [val for _, val in sorted(seq_upds_mergd.items())]
 
     return seq_upds_srtd
 
 
-def get_sim_updates(seq_options, base_sim):
+def get_sim_updates(seq_options, base_sims):
     """Get a list of updates required to form each simulation in the group."""
 
-    sequences = [SimSequence(i, base_sim) for i in seq_options]
-    sequences.sort(key=lambda x: x.nest_idx)
+    all_sim_updates = []
 
-    seq_upds = merge_parallel_seqences(sequences)
-    grp_upd = nest(*seq_upds)
+    for idx, base_sim in enumerate(base_sims):
 
-    sim_updates = []
-    for upd_lst in grp_upd:
-        upd_lst_flat = [j for i in upd_lst for j in i]
-        sim_updates.append(upd_lst_flat)
+        if idx == 0:
+            sequences = [SimSequence(i, base_sim) for i in seq_options]
+            sequences.sort(key=lambda x: x.nest_idx)
 
-    return sim_updates, sequences
+        # prt(sequences, 'sequences')
+        # exit()
+
+        seq_upds = merge_parallel_seqences(sequences)
+        grp_upd = nest(*seq_upds)
+
+        # prt(seq_upds, 'seq_upds')
+
+        sim_updates = []
+        for upd_lst in grp_upd:
+            upd_lst_flat = [j for i in upd_lst for j in i]
+            sim_updates.append(upd_lst_flat)
+
+        all_sim_updates.append(sim_updates)
+
+    return all_sim_updates, sequences
 
 
 class SimSequence(object):
@@ -177,6 +200,8 @@ class SimSequence(object):
     def _parse_vals(self, vals=None, start=None, step=None, stop=None):
         """Parse sequence spec vals and """
 
+        # print('in parse_vals')
+
         mut_exc_args({'vals': vals},
                      {'start': start, 'step': step, 'stop': stop})
 
@@ -198,7 +223,7 @@ class SimSequence(object):
 
         # Parse vals Numpy array or tuple if necessary (lists are represented
         # natively by YAML):
-        if self.val_seq_type:
+        if self.val_seq_type in ['array', 'tuple']:
 
             vals_prsd = []
             for val in vals:
@@ -225,6 +250,8 @@ class SimSequence(object):
 
         """
 
+        # print('in _get_updates')
+
         # Run any additional processing on the `vals`
         func = SEQUENCE_FUNC_LOOKUP.get(self.name)
         if func:
@@ -247,11 +274,16 @@ class SimSequence(object):
         nest_add = ['sequence_id', 'nest_idx']
 
         updates = []
-        for val_idx, val in enumerate(self.vals):
+        for _, val in enumerate(self.vals):
+
+            # prt(val, 'val')
 
             if self.val_seq_type == 'array':
                 path_str = readwrite.format_arr(
                     val, **fmt_arr_opt_path)[:-2]
+
+            elif self.val_seq_type == 'list':
+                path_str = '_'.join([self.path_fmt.format(i) for i in val])
 
             else:
                 path_str = self.path_fmt.format(val)
