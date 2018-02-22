@@ -9,9 +9,8 @@ from mendeleev import element
 from vecmaths import rotation
 
 from matsim import geometry, vectors, utils
-from matsim.utils import RestrictedDict, mut_exc_args, prt
-from matsim.atomistic.structure import site_labs_from_jsonable, site_labs_to_jsonable
-from matsim.atomistic.structure.crystal import CrystalBox, CrystalStructure
+from matsim.utils import prt
+from matsim.atomistic.structure.crystal import CrystalStructure
 from matsim.atomistic.structure.visualise import visualise as struct_visualise
 
 
@@ -138,7 +137,7 @@ class AtomisticStructure(object):
     def __init__(self, supercell, atom_sites, atom_labels, origin=None,
                  lattice_sites=None, lattice_labels=None, interstice_sites=None,
                  interstice_labels=None, crystals=None, crystal_structures=None,
-                 overlap_tol=1):
+                 overlap_tol=1, tile=None):
         """Constructor method for AtomisticStructure object."""
 
         if origin is None:
@@ -165,6 +164,9 @@ class AtomisticStructure(object):
         if self.volume < 0:
             raise ValueError('Supercell does not form a right - handed '
                              'coordinate system.')
+
+        if tile:
+            self.tile_supercell(tile)
 
     def translate(self, shift):
         """
@@ -854,172 +856,3 @@ class AtomisticStructure(object):
         """Get the volume of the supercell."""
         sup = self.supercell
         return np.dot(np.cross(sup[:, 0], sup[:, 1]), sup[:, 2])
-
-
-class BulkCrystal(AtomisticStructure):
-    """
-
-    Attributes
-    ----------
-    crystal_structure : CrystalStructure
-
-    TODO:
-    -   Add proper support for cs_orientation and cs_origin. Maybe allow one of
-        `box_lat` or `box_std` for the more general case.
-
-    """
-
-    def __init__(self, crystal_structure, box_lat, overlap_tol=1):
-        """Constructor method for BulkCrystal object."""
-
-        # Validation
-        if any([i in vectors.num_equal_cols(box_lat) for i in [2, 3]]):
-            raise ValueError(
-                'Identical columns found in box_lat: \n{}\n'.format(box_lat))
-
-        supercell = np.dot(crystal_structure.bravais_lattice.vecs, box_lat)
-
-        cb = CrystalBox(crystal_structure, supercell)
-        atom_sites = cb.atom_sites
-        lattice_sites = cb.lattice_sites
-
-        crystal_idx_lab_atm = {
-            'crystal_idx': (
-                np.array([0]),
-                np.zeros(atom_sites.shape[1], dtype=int)
-            ),
-        }
-        crystal_idx_lab_lat = {
-            'crystal_idx': (
-                np.array([0]),
-                np.zeros(lattice_sites.shape[1], dtype=int)
-            ),
-        }
-
-        atom_labels = copy.deepcopy(cb.atom_labels)
-        atom_labels.update({**crystal_idx_lab_atm})
-
-        lattice_labels = copy.deepcopy(cb.lattice_labels)
-        lattice_labels.update({**crystal_idx_lab_lat})
-
-        int_sites, int_labels = None, None
-        if cb.interstice_sites is not None:
-
-            crystal_idx_lab_int = {
-                'crystal_idx': (
-                    np.array([0]),
-                    np.zeros(cb.interstice_sites.shape[1], dtype=int)
-                ),
-            }
-
-            int_labels = copy.deepcopy(cb.interstice_labels)
-            int_labels.update({**crystal_idx_lab_int})
-
-        crystals = [{
-            'crystal': np.copy(supercell),
-            'origin': np.zeros((3, 1)),
-            'cs_idx': 0,
-            'cs_orientation': np.eye(3),
-            'cs_origin': [0, 0, 0]
-        }]
-
-        super().__init__(supercell,
-                         atom_sites,
-                         atom_labels,
-                         lattice_sites=lattice_sites,
-                         lattice_labels=lattice_labels,
-                         interstice_sites=int_sites,
-                         interstice_labels=int_labels,
-                         crystals=crystals,
-                         crystal_structures=[crystal_structure],
-                         overlap_tol=overlap_tol)
-
-        # super().__init__(supercell,
-        #                  crystals=crystals)
-
-        self.meta.update({'supercell_type': ['bulk']})
-
-
-class PointDefect(object):
-    """
-    Class to represent a point defect embedded within an AtomisticStructure
-
-    Attributes
-    ----------
-    defect_species : str
-        Chemical symbol of the defect species or "v" for vacancy
-    host_species : str
-        Chemical symbol of the species which this defect replaces or "i" for
-        interstitial.
-    index : int
-        The atom or interstitial site index within the AtomisticStructure.
-    charge : float
-        The defect's electronic charge relative to that of the site it occupies.
-    interstice_type : str
-        Set to "tetrahedral" or "octahedral" if `host_species` is "i".
-
-    """
-
-    def __init__(self, defect_species, host_species, index=None, charge=0,
-                 interstice_type=None):
-
-        # Validation
-        if interstice_type not in [None, 'tetrahedral', 'octahedral']:
-            raise ValueError('Interstice type "{}" not understood.'.format(
-                interstice_type))
-
-        if host_species != 'i' and interstice_type is not None:
-            raise ValueError('Non-interstitial defect specified but '
-                             '`interstice_type` also specified.')
-
-        if defect_species == 'v' and host_species == 'i':
-            raise ValueError('Cannot add a vacancy defect to an '
-                             'interstitial site!')
-
-        if host_species == 'i' and interstice_type is None:
-            raise ValueError('`interstice_type` must be specified for '
-                             'interstitial point defect.')
-
-        self.defect_species = defect_species
-        self.host_species = host_species
-        self.index = index
-        self.charge = charge
-        self.interstice_type = interstice_type
-
-    def __str__(self):
-        """
-        References
-        ----------
-        https://en.wikipedia.org/wiki/Kr%C3%B6ger%E2%80%93Vink_notation
-
-        """
-        # String representation of the charge in Kroger-Vink notation
-        if self.charge == 0:
-            charge_str = 'x'
-        elif self.charge > 0:
-            charge_str = '•' * abs(self.charge)
-        elif self.charge < 0:
-            charge_str = '′' * abs(self.charge)
-
-        out = '{}_{}^{}'.format(self.defect_species, self.host_species, charge_str,
-                                self.index)
-
-        if self.index is not None:
-            idx_str_int = 'interstitial' if self.host_species == 'i' else 'atom'
-            idx_str = 'at {} index {}'.format(idx_str_int, self.index)
-        else:
-            idx_str = ''
-
-        if self.interstice_type is not None:
-            out += ' ({}'.format(self.interstice_type)
-            out += ' ' + idx_str + ')'
-        else:
-            out += ' (' + idx_str + ')'
-
-        return out
-
-    def __repr__(self):
-        return ('PointDefect({!r}, {!r}, index={!r}, charge={!r}, '
-                'interstice_type={!r})').format(
-                    self.defect_species, self.host_species, self.index, self.charge,
-                    self.interstice_type)
