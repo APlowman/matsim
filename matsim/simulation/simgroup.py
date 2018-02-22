@@ -9,7 +9,9 @@ import copy
 import json
 import shutil
 import time
+import fnmatch
 from datetime import datetime
+
 
 import numpy as np
 import jsonpickle
@@ -272,14 +274,19 @@ class SimGroup(object):
 
     # Default path formatting options:
     path_options_default = {
-        'parallel_sims_join': '_+_',
-        'sim_numbers': True,
-        'sim_numbers_join': '__',
-        'sequence_names': False,
-        'sub_dirs': [],
-        'run_fmt': '{0}',
-        'calcs_path': 'calcs',
-        'human_id': '%Y-%m-%d-%H%M_%%r%%r%%r%%r%%r',
+        'calcs_dir_name':               'calcs',
+        'parallel_sims_join':           '_+_',
+        'sim_numbers':                  True,
+        'sim_numbers_join':             '__',
+        'sequence_names':               False,
+        'sub_dirs':                     ['%Y-%m'],
+        'human_id':                     '%Y-%m-%d-%H%M_%%r%%r%%r%%r%%r',
+        'run_groups_dir_name':          'run_groups',
+        'run_groups_item_dir_name':     '{0}',
+        'calcs_import_item_dir_name':   'import_idx_{0}',
+        'imported_files_dir_name':      'imported_files',
+        'imported_files_item_dir_name': 'import_run_{0}',
+        'visualisations_dir_name':      'vis',
     }
 
     def __init__(self, base_sim_options, run_options, path_options, sim_updates,
@@ -307,7 +314,7 @@ class SimGroup(object):
     @property
     def num_sims(self):
         """Return the number of simulations in this group."""
-        return len(self.sim_updates)
+        return sum(len(i) for i in self.sim_updates)
 
     @property
     def sequence_lengths(self):
@@ -386,11 +393,11 @@ class SimGroup(object):
 
         print('Saving SimGroup state -- DONE')
 
-    def get_base_sim(self):
+    def get_base_sim(self, imp_idx):
         """Return the base Simulation, on which sequences are based."""
-        sim_opt = copy.deepcopy(self.base_sim_options)
+        sim_opt = copy.deepcopy(self.base_sim_options[imp_idx])
         base_sim = SOFTWARE_CLASS_MAP[self.software](sim_opt)
-
+        base_sim.imp_idx = imp_idx
         base_sim.options.update({
             'sequence_id': {
                 'names': [],
@@ -413,19 +420,33 @@ class SimGroup(object):
         # If we are importing an Atomistic structure, could pass imported
         # structure in as an options['structure'] option, which is then
         # returned correctly in generate_structure.
-        for _, sim_upds in enumerate(self.sim_updates):
 
-            sim_opt = copy.deepcopy(self.base_sim_options)
+        for imp_idx, imp_sim_updates in enumerate(self.sim_updates):
 
-            if sim_upds:
-                for upd in sim_upds:
-                    sim_opt = apply_base_update(sim_opt, upd)
-                sim = SOFTWARE_CLASS_MAP[self.software](sim_opt)
-            else:
-                print('Adding just the base sim to the sims list.')
-                sim = self.get_base_sim()
+            # prt(imp_idx, 'imp_idx')
 
-            sims.append(sim)
+            for _, sim_upds in enumerate(imp_sim_updates):
+
+                # prt(_, '_')
+
+                sim_opt = copy.deepcopy(self.base_sim_options[imp_idx])
+
+                if sim_upds:
+                    for upd in sim_upds:
+                        sim_opt = apply_base_update(sim_opt, upd)
+
+                    prt(sim_opt, 'sim_opt')
+
+                    sim = SOFTWARE_CLASS_MAP[self.software](sim_opt)
+                    sim.imp_idx = imp_idx
+
+                else:
+                    print('Adding just the base sim to the sims list.')
+                    sim = self.get_base_sim(imp_idx)
+
+                sims.append(sim)
+
+        # prt(sims, 'sims')
 
         self.sims = sims
         print('Generating Simulation objects -- DONE')
@@ -439,7 +460,7 @@ class SimGroup(object):
         resource_type : str
             One of: "stage", "scratch", "archive", determines where to load the
             JSON file from. By default, the sim_group_state will be checked. If
-            state is 1 "on_stage_initial" or 2 "on_stage_run_groups", 
+            state is 1 "on_stage_initial" or 2 "on_stage_run_groups",
             resource_type is set to "stage"; if state is 3, 4, or 5,
             resource_type is set to "scratch".
 
@@ -448,7 +469,7 @@ class SimGroup(object):
         # First get info from database
         sg_params = dbs.get_sim_group_by_human_id(human_id)
 
-        prt(sg_params, 'sg_params')
+        # prt(sg_params, 'sg_params')
 
         # Get sim IDs from database as well:
         sims_db = dbs.get_sim_group_sims(sg_params['id'])
@@ -514,7 +535,7 @@ class SimGroup(object):
         """Add plots to the simulation directories on stage.
 
         TODO: this code shouldn't reference atomistic structure here; maybe
-        expose a Simulaton.visualise method which is invoked here and pass 
+        expose a Simulaton.visualise method which is invoked here and pass
         the visualise options dict as kwargs to that.
 
         """
@@ -525,23 +546,25 @@ class SimGroup(object):
 
         all_plot_paths = []
         make_seq_plots = True
+        vis_dir_name = self.path_options['visualisations_dir_name']
 
         if save_opt in ['sequences', 'all']:
 
             # Get the deepest sequence nest index whose values affect the structure
             affect_struct = [i.affects_structure for i in self.sequences]
-            prt(affect_struct, 'affect_struct')
+            # prt(affect_struct, 'affect_struct')
 
             make_seq_plots = affect_struct and True in affect_struct
             if make_seq_plots:
                 deepest_idx = (len(affect_struct) -
                                affect_struct[::-1].index(True) - 1)
 
-                prt(deepest_idx, 'deepest_idx')
+                # prt(deepest_idx, 'deepest_idx')
 
                 vis_path_final = ''
                 for sim_idx, sim in enumerate(self.sims):
 
+                    # print('calling sim path from vis.')
                     sim_path = self.get_sim_path(sim_idx)
                     vis_path = sim_path[:(deepest_idx + 2)]
 
@@ -549,13 +572,14 @@ class SimGroup(object):
 
                         vis_path_final = vis_path[-1]
                         vis_dir_path = self.stage.path.joinpath(
-                            *vis_path, 'plots'
+                            *vis_path,
+                            vis_dir_name
                         )
                         vis_dir_path.mkdir(parents=True)
                         plot_path = str(
                             vis_dir_path.joinpath('structure.html')
                         )
-                        all_plot_paths.append(vis_path + ['plots'])
+                        all_plot_paths.append(vis_path + [vis_dir_name])
                         vis_args = {
                             'save': True,
                             'save_args': {'filename': plot_path},
@@ -566,26 +590,78 @@ class SimGroup(object):
         if save_opt in ['base', 'all'] or not make_seq_plots:
 
             # Save a base simulation visualisation:
-            vis_dir_path = self.stage.path.joinpath('plots')
+            vis_dir_path = self.stage.path.joinpath(vis_dir_name)
             vis_dir_path.mkdir()
             plot_path = str(vis_dir_path.joinpath('structure.html'))
-            all_plot_paths.append(['plots'])
+            all_plot_paths.append([vis_dir_name])
             vis_args = {
                 'save': True,
                 'save_args': {'filename': plot_path},
                 **vis_opt_args,
             }
-            base_sim = self.get_base_sim()
+            base_sim = self.get_base_sim(imp_idx=0)
             base_sim.structure.visualise(**vis_args)
 
         self.vis_options['all_plot_paths'] = all_plot_paths
+
+    def copy_imported_files(self):
+        """Copy output files from imported sims."""
+
+        for imp_idx, base_opt in enumerate(self.base_sim_options):
+
+            imp_dat = base_opt['import_data']
+
+            if not imp_dat:
+                continue
+
+            src_path = imp_dat['run_path']
+            src_all_files = os.listdir(src_path)
+
+            dst_imp_files_path = [
+                self.path_options['imported_files_dir_name'],
+                self.path_options['imported_files_item_dir_name'].format(
+                    imp_idx)
+            ]
+
+            dst_path = self.stage.path.joinpath(*dst_imp_files_path)
+
+            # print('makedirs: {}'.format(dst_imp_files_path))
+
+            os.makedirs(dst_path)
+
+            for imp_file_pat in imp_dat['import_files']:
+
+                file_matched = []
+
+                for src_file in src_all_files:
+                    if fnmatch.fnmatch(src_file, imp_file_pat):
+                        # print('file matched! {} => {}'.format(
+                        #     imp_file_pat, src_file))
+                        file_matched.append(src_file)
+
+                if file_matched:
+
+                    for file_path in file_matched:
+
+                        src_file_path = os.path.join(src_path, file_path)
+                        dst_file_path = os.path.join(dst_path, file_path + '_')
+
+                        # prt(src_file_path, 'src_file_path')
+                        # prt(dst_file_path, 'dst_file_path')
+
+                        # Copy src to dst
+                        shutil.copy2(src_file_path, dst_file_path)
+
+                else:
+                    msg = 'File not found for importing: {}'
+                    raise ValueError(msg.format(imp_file_pat))
 
     def initialise(self):
         """Write helper files on stage and add sim group to database."""
 
         # Check if this sim group is in database
-        prt(dbs.get_sim_group_state_id(self.human_id),
-            'dbs.get_sim_group_state_id(self.human_id)')
+        # prt(dbs.get_sim_group_state_id(self.human_id),
+        #     'dbs.get_sim_group_state_id(self.human_id)')
         if dbs.get_sim_group_state_id(self.human_id) is not False:
             raise ValueError('Simulations have already been generated for this'
                              ' SimGroup object.')
@@ -604,12 +680,16 @@ class SimGroup(object):
         # Copy makesims input file:
         shutil.copy2(CONFIG['option_paths']['makesims'], stage_path)
 
-        sim_params = self.base_sim_options['params'][self.software]
+        for base_opt in self.base_sim_options:
+            sim_params = base_opt['params'][self.software]
+            SOFTWARE_CLASS_MAP[self.software].copy_reference_data(
+                sim_params, stage_path, scratch_path)
 
-        SOFTWARE_CLASS_MAP[self.software].copy_reference_data(
-            sim_params, stage_path, scratch_path)
+        # Copy files from import sims
+        self.copy_imported_files()
 
         self.generate_sim_group_sims()
+
         self.make_visualisations()
 
         print('Writing initial files -- DONE')
@@ -617,7 +697,7 @@ class SimGroup(object):
         print('Adding SimGroup to the database -- PENDING')
         dbs.add_sim_group(self)
         print('Adding SimGroup to the database -- DONE')
-        prt(self.dbid, 'self.dbid')
+        # prt(self.dbid, 'self.dbid')
 
         self.save_state('stage')
 
@@ -783,7 +863,7 @@ class SimGroup(object):
 
         # Get resource type
         sg_state_id = dbs.get_sim_group_state_id(self.human_id)
-        prt(sg_state_id, 'sg_state_id')
+        # prt(sg_state_id, 'sg_state_id')
         if sg_state_id in [1, 2]:
             resource_type = 'stage'
         elif sg_state_id in [3, 4, 5]:
@@ -824,11 +904,35 @@ class SimGroup(object):
                 input_path = sm_pth_sct
 
             # Write simulation input files:
-            self.sims[sim_idx].write_input_files(
-                run_order_in_sim, str(input_path))
+            sim.write_input_files(run_order_in_sim, str(input_path))
+
+            # Copy imported files into run directory:
+            if self.is_import:
+                imp_dir = [
+                    self.path_options['imported_files_dir_name'],
+                    self.path_options['imported_files_item_dir_name'].format(
+                        sim.imp_idx)
+                ]
+                imp_src = self.stage.path.joinpath(*imp_dir)
+                imp_dst = str(input_path)
+
+                # prt(imp_src, 'imp_src')
+                # prt(imp_dst, 'imp_dst')
+
+                for imp_file in os.listdir(imp_src):
+
+                    imp_file_src = os.path.join(imp_src, imp_file)
+                    imp_file_dst = os.path.join(imp_dst, imp_file)
+
+                    # prt(imp_file_src, 'imp_file_src')
+                    # prt(imp_file_dst, 'imp_file_dst')
+
+                    shutil.copy2(imp_file_src, imp_file_dst)
 
         # Write supporting files: jobscript, dirlist, options records
-        rg_path = ['run_groups', str(order_in_sim_group)]
+
+        rg_path = [self.path_options['run_groups_dir_name'],
+                   str(order_in_sim_group)]
         rg_path_stage = stage_path.joinpath(*rg_path)
         rg_path_scratch = scratch_path.joinpath(*rg_path)
 
@@ -951,7 +1055,8 @@ class SimGroup(object):
         sub_msg = ('Submitting run group: {}')
         print(sub_msg.format(run_group_idx))
 
-        rg_path = '/'.join(['run_groups', str(run_group_idx)])
+        rg_path = '/'.join([self.path_options['run_groups_dir_name'],
+                            str(run_group_idx)])
 
         if self.scratch.sge:
             cmd = ['qsub']
@@ -1069,7 +1174,8 @@ class SimGroup(object):
 
         # Copy directory to scratch:
         conn = ResourceConnection(self.stage, self.scratch)
-        conn.copy_to_dest(ignore=['plots'])
+        conn.copy_to_dest(
+            ignore=[self.path_options['visualisations_dir_name']])
 
         # Copy plots directly to archive:
         conn_arch = ResourceConnection(self.stage, self.archive)
@@ -1157,16 +1263,34 @@ class SimGroup(object):
             path = [str(i) + self.path_options['sim_numbers_join'] + j
                     for i, j in zip(path_labs, path)]
 
-        path = [self.path_options['calcs_path']] + path
+        # If import, we need to include the import idx directory in the run
+        # directories:
 
-        return path
+        final_path = [self.path_options['calcs_dir_name']]
+
+        if self.is_import:
+
+            final_path += [
+                self.path_options['calcs_import_item_dir_name'].format(
+                    self.sims[sim_idx].imp_idx)
+            ]
+
+        final_path += path
+
+        return final_path
+
+    @property
+    def is_import(self):
+        return (self.base_sim_options[0]['import_data'] is not None)
 
     def get_run_path(self, sim_idx, run_group_idx):
         """Get the path to a simulation run directory."""
 
         sim_path = self.get_sim_path(sim_idx)
         run_path = sim_path
-        run_path += [self.path_options['run_fmt'].format(run_group_idx)]
+        run_path += [
+            self.path_options['run_groups_item_dir_name'].format(
+                run_group_idx)]
 
         return run_path
 
