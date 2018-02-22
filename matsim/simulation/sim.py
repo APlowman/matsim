@@ -11,6 +11,7 @@ class Simulation(object):
     def __init__(self):
 
         self.dbid = None
+        self.imp_idx = None
         self.runs = []
         self.options = {}
 
