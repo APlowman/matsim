@@ -1,0 +1,12 @@
+#!/bin/bash
+
+module load apps/binapps/anaconda/2.5.0
+source $DAMASK_root/env/DAMASK.sh
+
+#$ -S /bin/bash
+#$ -N test
+#$ -cwd
+#$ -V
+#$ -pe smp.pe 2
+
+mpirun -n $NSLOTS DAMASK_spectral --geom geom.geom --load load.load
