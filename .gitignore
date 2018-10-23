@@ -110,3 +110,9 @@ test.py
 notebooks
 process_output
 docs/example_options/gamma_surface/lookup.yml
+docs/latex/doc.synctex.gz
+docs/latex/doc.aux
+docs/latex/doc.fdb_latexmk
+docs/latex/doc.fls
+docs/latex/doc.pdf
+docs/workflows.md

@@ -1,0 +1,107 @@
+\documentclass[12pt]{article}
+\usepackage{listings}
+\usepackage{color}
+\usepackage[margin=1in]{geometry}
+\begin{document}
+
+\section{Simulation Sequences}
+
+\subsection{Sequence definition}
+The sequences option in the makesims options file allows simulation sequences to be defined. Each list element in the sequences list option is a dictionary like structure with, at a minimum, the keys: name, nest\_idx and vals. Some sequences, such as those whose values are floating point numbers, support keys: start, step and stop, in place of the vals key, so that a range can be supplied.
+
+\subsection{Nesting}
+The following sequences list will generate a simulation group consisting of ten simulations. The nest indices of sequences B and C are both 1, meaning they are considered to be parallel sequences. Parallel sequences can be used when you want to merge the values of two sequences into the same set of simulations. Note that this requires that each parallel sequence (i.e. each with the same nest index) must have the same number of values.
+
+\lstset{
+    language=python,
+    numbers=left,
+    frame=single,
+    basicstyle=\ttfamily\footnotesize,
+    caption=Sequences list to generate a simulation group of nine simulations.}
+
+\begin{lstlisting}
+sequences = [
+    {
+        name: A,
+        nest_idx: 0,
+        vals: [a_0, a_1],
+    },
+    {
+        name: B,
+        nest_idx: 1,
+        vals: [b_0, b_1],
+    },
+    {
+        name: C,
+        nest_idx: 1,
+        vals: [c_0, c_1],
+    },    
+    {
+        name: D,
+        nest_idx: 2,
+        vals: [d_0,d_1],
+    },    
+]
+\end{lstlisting}
+
+The resulting hierarchical structure of generated simulatons is shown in the below table.
+
+\begin{table}[]
+    \centering
+    \begin{tabular}{|l|l|c|c|c|c|c|c|c|c|}
+        \hline
+        \begin{tabular}[c]{@{}l@{}}Sequence\\ Name\end{tabular}                & \begin{tabular}[c]{@{}l@{}}Nest \\ Index\end{tabular} & \multicolumn{8}{l|}{\begin{tabular}[c]{@{}l@{}}Sequence \\ Values\end{tabular}}                                                                                                                                      \\ \hline
+        $A$                                      & 0                         & \multicolumn{4}{c|}{$a_{0}$}                   & \multicolumn{4}{c|}{$a_{1}$}                                                                                                       \\ \hline
+        $B$                                      & 1                         & \multicolumn{2}{c|}{$b_{0}$}                   & \multicolumn{2}{c|}{$b_{1}$} & \multicolumn{2}{c|}{$b_{0}$} & \multicolumn{2}{c|}{$b_{1}$}                                         \\ \hline
+        $C$                                      & 1                         & \multicolumn{2}{c|}{$c_{0}$}                   & \multicolumn{2}{c|}{$c_{1}$} & \multicolumn{2}{c|}{$c_{0}$} & \multicolumn{2}{c|}{$c_{1}$}                                         \\ \hline
+        $D$                                      & 2                         & $d_{0}$                                        & $d_{1}$                      & $d_{0}$                      & $d_{1}$                      & $d_{0}$ & $d_{1}$ & $d_{0}$ & $d_{1}$ \\ \hline
+        \multicolumn{2}{|r|}{\textit{Sim index}} & 0                         & 1                                              & 2                            & 3                            & 6                            & 7       & 8       & 9                 \\ \hline
+    \end{tabular}
+    \caption{A simulation group of 12 simulations generated from a hierarchical structure of four simulation sequences.}
+    \label{my-label}
+\end{table}
+
+On the other hand, we can also have complete control over the simulation nesting, by specifying a mapping between values in a sequence and the value of the parent sequence. Listing 2 below would generate the same simulation group as in Listing 1, but demonstrates how we can gain explicit control over the nesting.
+
+\lstset{
+    caption=Finer control over simulation sequences.}
+
+\begin{lstlisting}
+    sequences = [
+        {
+            name: A,
+            nest_idx: 0,
+            vals_map: [
+                {parent_vals_idx: [], vals: [a_0, a_1]},
+            ],
+        },
+        {
+            name: B,
+            nest_idx: 1,
+            vals_map: [
+                {parent_vals_idx: [0], vals: [b_0, b_1]},
+                {parent_vals_idx: [1], vals: [b_0, b_1]},
+            ],
+        },
+        {
+            name: C,
+            nest_idx: 1,
+            vals_map: [
+                {parent_vals_idx: [0], vals: [c_0, c_1]},
+                {parent_vals_idx: [1], vals: [c_0, c_1]},
+            ],
+        },    
+        {
+            name: D,
+            nest_idx: 2,
+            vals_map: [
+                {parent_vals_idx: [0, 0], vals: [d_0, d_1]},
+                {parent_vals_idx: [0, 1], vals: [d_0, d_1]},
+                {parent_vals_idx: [1, 0], vals: [d_0, d_1]},
+                {parent_vals_idx: [1, 1], vals: [d_0, d_1]},
+            ]
+        },    
+    ]
+    \end{lstlisting}
+
+\end{document}
